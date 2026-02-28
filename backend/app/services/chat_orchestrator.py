@@ -28,8 +28,17 @@ from app.repositories.user_repository import UserRepository
 from app.runtime.base import ConversationRuntime
 from app.runtime.factory import build_runtime
 from app.schemas.chat import ChatRequest, ChatResponse, ChatRole, SafetyResult
+from app.schemas.safety import SafetyEvaluateRequest
+from app.services.safety_monitor_service import SafetyMonitorService
 
 logger = logging.getLogger(__name__)
+_SUPPORTIVE_REFUSAL_REPLY = (
+    "I hear that you are in a lot of pain right now. I cannot help with anything that could "
+    "harm you, but I care about your safety and we can take one small step together. "
+    "If you may be in immediate danger, please call 999. You can also contact The Samaritans "
+    "Hong Kong (2896 0000), Suicide Prevention Services (2382 0000), or The Samaritan "
+    "Befrienders Hong Kong (2389 2222)."
+)
 
 
 class ChatOrchestrator:
@@ -39,7 +48,8 @@ class ChatOrchestrator:
         self,
         provider_router: ProviderRouter | None = None,
         runtime: ConversationRuntime | None = None,
-        context_builder: ConversationContextBuilder | None = None
+        context_builder: ConversationContextBuilder | None = None,
+        safety_monitor_service: SafetyMonitorService | None = None,
     ):
         self._settings = settings
         self._provider_router = provider_router or ProviderRouter(settings)
@@ -52,6 +62,9 @@ class ChatOrchestrator:
         )
         self._context_builder = context_builder or ConversationContextBuilder(
             settings)
+        self._safety_monitor_service = safety_monitor_service or SafetyMonitorService(
+            self._provider_router
+        )
 
     def _persist_short_term_memory(
         self,
@@ -139,6 +152,8 @@ class ChatOrchestrator:
                 request_id=request_id,
                 risk_level=SafetyRiskLevel(safety.risk_level),
                 show_crisis_banner=safety.show_crisis_banner,
+                emotion_label=safety.emotion_label,
+                emotion_score=safety.emotion_score,
             )
 
             audit_repository.create_provider_event(
@@ -152,6 +167,53 @@ class ChatOrchestrator:
                 fallback_reason=provider_fallback_reason,
                 metadata_json={"thread_id": thread_id},
             )
+            audit_repository.create_provider_event(
+                user_id=user_id,
+                request_id=request_id,
+                role=role_enum,
+                scope=ProviderEventScope.safety,
+                provider_name=safety.monitor_provider,
+                runtime=runtime,
+                status=(
+                    ProviderEventStatus.degraded
+                    if safety.degraded
+                    else ProviderEventStatus.success
+                ),
+                fallback_reason=safety.fallback_reason,
+                metadata_json={
+                    "risk_level": safety.risk_level,
+                    "policy_action": safety.policy_action,
+                },
+            )
+            fresh_retrieval = (
+                ((context_snapshot.get("memory") or {}).get("fresh_retrieval"))
+                if isinstance(context_snapshot, dict)
+                else None
+            )
+            if isinstance(fresh_retrieval, dict):
+                retrieval_source = str(fresh_retrieval.get("source", "retrieval-stub"))
+                retrieval_status = (
+                    ProviderEventStatus.degraded
+                    if fresh_retrieval.get("status") == "degraded"
+                    else ProviderEventStatus.success
+                )
+                audit_repository.create_provider_event(
+                    user_id=user_id,
+                    request_id=request_id,
+                    role=role_enum,
+                    scope=ProviderEventScope.retrieval,
+                    provider_name=retrieval_source,
+                    runtime=runtime,
+                    status=retrieval_status,
+                    fallback_reason=(
+                        None
+                        if retrieval_status == ProviderEventStatus.success
+                        else str(fresh_retrieval.get("fallback_reason") or "retrieval_unavailable")
+                    ),
+                    metadata_json={
+                        "entry_count": len(fresh_retrieval.get("entries", [])),
+                    },
+                )
             audit_repository.create_audit_event(
                 event_type=AuditEventType.safety_event,
                 user_id=user_id,
@@ -161,6 +223,11 @@ class ChatOrchestrator:
                 metadata_json={
                     "risk_level": safety.risk_level,
                     "show_crisis_banner": safety.show_crisis_banner,
+                    "emotion_label": safety.emotion_label,
+                    "emotion_score": safety.emotion_score,
+                    "policy_action": safety.policy_action,
+                    "monitor_provider": safety.monitor_provider,
+                    "fallback_reason": safety.fallback_reason,
                 },
             )
 
@@ -235,24 +302,35 @@ class ChatOrchestrator:
             chat_request.user_id
         )
 
-        from app.services.safety_service import assess_safety
-
-        assessment = assess_safety(chat_request.message)
-        if assessment.risk_level == "high":
-            context["safety_context"] = {
-                "risk_level": assessment.risk_level,
-                "crisis_resources": assessment.crisis_resources,
-            }
-
-        reply = self._runtime.generate_reply(
-            message=chat_request.message,
-            provider=provider,
-            context=context
+        safety_result = self._safety_monitor_service.evaluate(
+            SafetyEvaluateRequest(
+                user_id=chat_request.user_id,
+                role=role,
+                thread_id=thread_id,
+                message=chat_request.message,
+            )
         )
         safety = SafetyResult(
-            risk_level=assessment.risk_level,
-            show_crisis_banner=assessment.show_crisis_banner,
+            risk_level=safety_result.risk_level,
+            show_crisis_banner=safety_result.show_crisis_banner,
+            emotion_label=safety_result.emotion_label,
+            emotion_score=safety_result.emotion_score,
+            policy_action=safety_result.policy_action,
+            monitor_provider=safety_result.monitor_provider,
+            degraded=safety_result.degraded,
+            fallback_reason=safety_result.fallback_reason,
         )
+        runtime_context = dict(context)
+        runtime_context["safety"] = safety.model_dump()
+
+        if safety.policy_action == "supportive_refusal":
+            reply = _SUPPORTIVE_REFUSAL_REPLY
+        else:
+            reply = self._runtime.generate_reply(
+                message=chat_request.message,
+                provider=provider,
+                context=runtime_context
+            )
 
         try:
             self._persist_chat_turn(
@@ -265,7 +343,7 @@ class ChatOrchestrator:
                 runtime=self._runtime.runtime_name,
                 provider_route=provider_route,
                 provider_fallback_reason=fallback_reason,
-                context_snapshot=context,
+                context_snapshot=runtime_context,
                 safety=safety,
             )
         except Exception:

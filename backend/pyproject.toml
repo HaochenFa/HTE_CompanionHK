@@ -15,6 +15,7 @@ dependencies = [
   "langchain-openai",
   "langgraph",
   "pgvector",
+  "python-multipart",
   "pydantic-settings",
   "psycopg[binary]",
   "redis",

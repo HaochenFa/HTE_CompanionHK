@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     minimax_api_key: str = Field(default="", alias="MINIMAX_API_KEY")
     minimax_model: str = Field(
         default="MiniMax-M2.5", alias="MINIMAX_MODEL")
+    minimax_safety_model: str = Field(
+        default="MiniMax-M2", alias="MINIMAX_SAFETY_MODEL")
     minimax_base_url: str = Field(
         default="https://api.minimax.io/v1", alias="MINIMAX_BASE_URL")
     feature_elevenlabs_enabled: bool = Field(
@@ -42,6 +44,10 @@ class Settings(BaseSettings):
     exa_api_key: str = Field(default="", alias="EXA_API_KEY")
     feature_aws_enabled: bool = Field(
         default=True, alias="FEATURE_AWS_ENABLED")
+    feature_safety_monitor_enabled: bool = Field(
+        default=True, alias="FEATURE_SAFETY_MONITOR_ENABLED")
+    feature_voice_api_enabled: bool = Field(
+        default=True, alias="FEATURE_VOICE_API_ENABLED")
     feature_weather_enabled: bool = Field(
         default=True, alias="FEATURE_WEATHER_ENABLED")
     feature_google_maps_enabled: bool = Field(
@@ -60,6 +66,9 @@ class Settings(BaseSettings):
 
     open_meteo_base_url: str = Field(
         default="https://api.open-meteo.com", alias="OPEN_METEO_BASE_URL")
+    exa_api_key: str = Field(default="", alias="EXA_API_KEY")
+    exa_base_url: str = Field(default="https://api.exa.ai", alias="EXA_BASE_URL")
+    exa_top_k: int = Field(default=3, alias="EXA_TOP_K")
     provider_timeout_seconds: float = Field(
         default=6.0, alias="PROVIDER_TIMEOUT_SECONDS")
 

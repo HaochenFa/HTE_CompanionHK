@@ -152,4 +152,66 @@ describe("ChatShell", () => {
       expect(screen.queryByText("Local guide space reply.")).not.toBeInTheDocument();
     });
   });
+
+  it("shows crisis banner per role without leaking to other role spaces", async () => {
+    vi.mocked(chatApi.postChatMessage)
+      .mockResolvedValueOnce({
+        request_id: "risk-request",
+        thread_id: "demo-user-companion-thread",
+        runtime: "simple",
+        provider: "mock",
+        reply: "Please reach out for support right now.",
+        safety: {
+          risk_level: "high",
+          show_crisis_banner: true,
+          emotion_label: "sad",
+          emotion_score: 0.9,
+          policy_action: "supportive_refusal",
+          monitor_provider: "rules",
+          degraded: false,
+          fallback_reason: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        request_id: "safe-request",
+        thread_id: "demo-user-local_guide-thread",
+        runtime: "simple",
+        provider: "mock",
+        reply: "Try this walking route.",
+        safety: {
+          risk_level: "low",
+          show_crisis_banner: false,
+          emotion_label: "calm",
+          emotion_score: 0.6,
+          policy_action: "allow",
+          monitor_provider: "rules",
+          degraded: false,
+          fallback_reason: null,
+        },
+      });
+
+    render(<ChatShell />);
+
+    fireEvent.change(screen.getByLabelText("Message input"), {
+      target: { value: "I cannot go on." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("You are not alone")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Local Guide/i }));
+    await waitFor(() => {
+      expect(screen.queryByText("You are not alone")).not.toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Message input"), {
+      target: { value: "Suggest evening plan." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => {
+      expect(screen.queryByText("You are not alone")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Companion/i }));
+    expect(await screen.findByText("You are not alone")).toBeInTheDocument();
+  });
 });

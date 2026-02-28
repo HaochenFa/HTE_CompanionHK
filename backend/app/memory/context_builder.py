@@ -9,6 +9,7 @@ from app.core.redis_client import (
 from app.core.settings import Settings
 from app.memory.embeddings import DeterministicEmbeddingProvider
 from app.models.enums import RoleType
+from app.providers.router import ProviderRouter
 from app.repositories.memory_repository import MemoryRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.chat import ChatRole
@@ -27,6 +28,7 @@ class ConversationContextBuilder:
         self._embedding_provider = DeterministicEmbeddingProvider(
             settings.memory_embedding_dimensions
         )
+        self._provider_router = ProviderRouter(settings)
 
     def build(
         self,
@@ -81,6 +83,12 @@ class ConversationContextBuilder:
             "top_k": self._settings.memory_retrieval_top_k,
             "entries": [],
         }
+        fresh_retrieval: dict[str, Any] = {
+            "source": "exa",
+            "status": "ok",
+            "top_k": self._settings.exa_top_k,
+            "entries": [],
+        }
 
         try:
             role_enum = RoleType(role)
@@ -131,6 +139,24 @@ class ConversationContextBuilder:
             long_term_retrieval["status"] = "degraded"
             long_term_retrieval["fallback_reason"] = "pgvector_unavailable"
 
+        try:
+            retrieval_provider = self._provider_router.resolve_retrieval_provider()
+            retrieved_items = retrieval_provider.retrieve(message)
+            fresh_retrieval["source"] = retrieval_provider.provider_name
+            fresh_retrieval["entries"] = [
+                {
+                    "title": str(item.get("title", "")),
+                    "url": item.get("url"),
+                    "summary": item.get("summary"),
+                    "source": item.get("source", retrieval_provider.provider_name),
+                }
+                for item in retrieved_items
+                if isinstance(item, dict)
+            ]
+        except Exception:
+            fresh_retrieval["status"] = "degraded"
+            fresh_retrieval["fallback_reason"] = "exa_unavailable"
+
         return {
             "user_id": user_id,
             "thread_id": thread_id,
@@ -141,5 +167,6 @@ class ConversationContextBuilder:
                 "short_term": short_term_context,
                 "long_term_profile": long_term_profile,
                 "long_term_retrieval": long_term_retrieval,
+                "fresh_retrieval": fresh_retrieval,
             }
         }

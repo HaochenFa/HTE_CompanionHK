@@ -1,14 +1,29 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
-
-class TTSRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=5000)
-    language: str = Field(default="en")
-    voice_provider: str = Field(default="elevenlabs")
+VoiceProviderName = Literal["elevenlabs", "cantoneseai"]
 
 
-class TTSResponse(BaseModel):
-    provider: str
-    language: str
+class VoiceTTSRequest(BaseModel):
+    text: str = Field(min_length=1)
+    language: str = "en"
+    preferred_provider: Literal["auto", "elevenlabs", "cantoneseai"] = "auto"
+    voice_id: str | None = None
+
+
+class VoiceTTSResponse(BaseModel):
+    request_id: str
+    provider: VoiceProviderName
     audio_base64: str
-    audio_format: str
+    mime_type: str
+    degraded: bool = False
+    fallback_reason: str | None = None
+
+
+class VoiceSTTResponse(BaseModel):
+    request_id: str
+    provider: VoiceProviderName
+    text: str
+    degraded: bool = False
+    fallback_reason: str | None = None
