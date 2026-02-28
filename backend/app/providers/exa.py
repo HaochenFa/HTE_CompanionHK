@@ -17,6 +17,11 @@ class StubRetrievalProvider(RetrievalProvider):
 
 
 class ExaRetrievalProvider(RetrievalProvider):
+    """
+    Exa AI retrieval provider for fresh local context
+    (events, neighborhood info, trending places in Hong Kong).
+    """
+
     provider_name = "exa"
 
     def __init__(self, *, api_key: str, base_url: str, top_k: int, timeout_seconds: float):
@@ -27,6 +32,7 @@ class ExaRetrievalProvider(RetrievalProvider):
 
     def retrieve(self, query: str) -> list[dict[str, Any]]:
         if not self._api_key:
+            logger.warning("exa_api_key_missing, returning_empty")
             return []
 
         try:
@@ -37,9 +43,13 @@ class ExaRetrievalProvider(RetrievalProvider):
                     "Content-Type": "application/json",
                 },
                 json={
-                    "query": query,
+                    "query": f"{query} Hong Kong",
                     "numResults": self._top_k,
                     "useAutoprompt": True,
+                    "contents": {
+                        "text": {"maxCharacters": 500},
+                        "highlights": {"numSentences": 2},
+                    },
                 },
                 timeout=self._timeout_seconds,
             )
@@ -47,7 +57,7 @@ class ExaRetrievalProvider(RetrievalProvider):
                 logger.warning(
                     "exa_request_failed status=%s body=%s",
                     response.status_code,
-                    response.text,
+                    response.text[:200],
                 )
                 return []
             payload = response.json()
@@ -71,7 +81,11 @@ class ExaRetrievalProvider(RetrievalProvider):
                     "title": title,
                     "url": None if url is None else str(url),
                     "summary": None if summary is None else str(summary),
+                    "highlights": item.get("highlights", []),
+                    "published_date": item.get("publishedDate"),
                     "source": self.provider_name,
                 }
             )
+
+        logger.info("exa_retrieval_success query=%s results=%d", query, len(normalized))
         return normalized

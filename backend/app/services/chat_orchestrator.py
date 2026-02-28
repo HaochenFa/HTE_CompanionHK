@@ -10,7 +10,7 @@ from app.core.redis_client import (
     serialize_json,
 )
 from app.core.settings import settings
-from app.memory.embeddings import DeterministicEmbeddingProvider
+from app.memory.embeddings import build_embedding_provider
 from app.memory.context_builder import ConversationContextBuilder
 from app.models.enums import (
     AuditEventType,
@@ -54,8 +54,11 @@ class ChatOrchestrator:
         self._settings = settings
         self._provider_router = provider_router or ProviderRouter(settings)
         self._runtime = runtime or build_runtime(settings)
-        self._embedding_provider = DeterministicEmbeddingProvider(
-            settings.memory_embedding_dimensions
+        self._embedding_provider = build_embedding_provider(
+            api_key=settings.minimax_api_key,
+            model=settings.memory_embedding_model,
+            base_url=settings.minimax_base_url,
+            dimensions=settings.memory_embedding_dimensions,
         )
         self._context_builder = context_builder or ConversationContextBuilder(
             settings)

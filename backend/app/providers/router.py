@@ -1,3 +1,5 @@
+import logging
+
 from app.core.settings import Settings
 from app.providers.base import ChatProvider, MapsProvider, RetrievalProvider, VoiceProvider, WeatherProvider
 from app.providers.cantoneseai import CantoneseAIVoiceProvider
@@ -7,6 +9,8 @@ from app.providers.google_maps import GoogleMapsProvider, StubMapsProvider
 from app.providers.minimax import MiniMaxChatProvider
 from app.providers.mock import MockChatProvider
 from app.providers.open_meteo import OpenMeteoWeatherProvider, StubWeatherProvider
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderRouter:
