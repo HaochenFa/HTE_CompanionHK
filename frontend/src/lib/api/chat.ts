@@ -1,4 +1,10 @@
-import type { ChatHistoryResponse, ChatRequest, ChatResponse, Role } from "@/features/chat/types";
+import type {
+  ChatHistoryResponse,
+  ChatRequest,
+  ChatResponse,
+  ClearHistoryResponse,
+  Role,
+} from "@/features/chat/types";
 import { apiBaseUrl } from "@/lib/api/base-url";
 
 const API_BASE_URL = apiBaseUrl();
@@ -14,17 +20,20 @@ const ROLE_HISTORY_PATH: Record<Role, string> = {
 };
 
 export async function postChatMessage(payload: ChatRequest): Promise<ChatResponse> {
+  const body: Record<string, unknown> = {
+    user_id: payload.user_id,
+    thread_id: payload.thread_id,
+    message: payload.message,
+  };
+  if (payload.attachment) {
+    body.attachment = payload.attachment;
+  }
+
   const response = await fetch(`${API_BASE_URL}/${ROLE_CHAT_PATH[payload.role]}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({
-      user_id: payload.user_id,
-      thread_id: payload.thread_id,
-      message: payload.message,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -55,4 +64,25 @@ export async function getChatHistory(params: {
     throw new Error(`Chat history request failed with status ${response.status}`);
   }
   return (await response.json()) as ChatHistoryResponse;
+}
+
+export async function clearChatHistory(params: {
+  user_id: string;
+  role: Role;
+  thread_id?: string;
+}): Promise<ClearHistoryResponse> {
+  const response = await fetch(`${API_BASE_URL}/${ROLE_HISTORY_PATH[params.role]}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      user_id: params.user_id,
+      role: params.role,
+      thread_id: params.thread_id,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Clear history request failed with status ${response.status}`);
+  }
+  return (await response.json()) as ClearHistoryResponse;
 }

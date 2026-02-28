@@ -5,17 +5,26 @@ from pydantic import BaseModel, Field
 ChatRole = Literal["companion", "local_guide", "study_guide"]
 
 
+class ImageAttachment(BaseModel):
+    mime_type: Literal["image/jpeg", "image/png", "image/webp"]
+    base64_data: str = Field(min_length=1)
+    filename: str | None = None
+    size_bytes: int | None = Field(default=None, ge=0, le=5_242_880)
+
+
 class ChatRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
     thread_id: str | None = Field(default=None, min_length=1)
     role: ChatRole = "companion"
+    attachment: ImageAttachment | None = None
 
 
 class RoleChatRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
     thread_id: str | None = Field(default=None, min_length=1)
+    attachment: ImageAttachment | None = None
 
 
 class SafetyResult(BaseModel):
@@ -54,3 +63,19 @@ class ChatHistoryResponse(BaseModel):
     role: ChatRole
     thread_id: str
     turns: list[ChatTurn] = Field(default_factory=list)
+
+
+class ClearHistoryRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    role: ChatRole
+    thread_id: str | None = Field(default=None, min_length=1)
+
+
+class ClearHistoryResponse(BaseModel):
+    user_id: str
+    role: ChatRole
+    cleared_thread_id: str
+    new_thread_id: str
+    cleared_message_count: int = 0
+    cleared_memory_count: int = 0
+    cleared_recommendation_count: int = 0

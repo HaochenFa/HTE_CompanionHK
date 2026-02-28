@@ -7,6 +7,8 @@ from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
     ChatRole,
+    ClearHistoryRequest,
+    ClearHistoryResponse,
     RoleChatRequest,
 )
 from app.services.chat_orchestrator import ChatOrchestrator
@@ -22,6 +24,7 @@ def _chat_forced_role(payload: RoleChatRequest, *, role: ChatRole) -> ChatRespon
         role=role,
         thread_id=payload.thread_id,
         message=payload.message,
+        attachment=payload.attachment,
     )
     return orchestrator.generate_reply(request)
 
@@ -148,3 +151,55 @@ def chat_study_history(
     except Exception:
         logger.exception("chat_study_history_endpoint_error user_id=%s", user_id)
         raise HTTPException(status_code=500, detail="Internal error fetching study history.")
+
+
+@router.delete("/chat/history", response_model=ClearHistoryResponse)
+def clear_chat_history(payload: ClearHistoryRequest) -> ClearHistoryResponse:
+    try:
+        return orchestrator.clear_history(
+            user_id=payload.user_id,
+            role=payload.role,
+            thread_id=payload.thread_id,
+        )
+    except Exception:
+        logger.exception("clear_chat_history_error user_id=%s role=%s", payload.user_id, payload.role)
+        raise HTTPException(status_code=500, detail="Internal error clearing chat history.")
+
+
+@router.delete("/chat/companion/history", response_model=ClearHistoryResponse)
+def clear_companion_history(payload: ClearHistoryRequest) -> ClearHistoryResponse:
+    try:
+        return orchestrator.clear_history(
+            user_id=payload.user_id,
+            role="companion",
+            thread_id=payload.thread_id,
+        )
+    except Exception:
+        logger.exception("clear_companion_history_error user_id=%s", payload.user_id)
+        raise HTTPException(status_code=500, detail="Internal error clearing companion history.")
+
+
+@router.delete("/chat/guide/history", response_model=ClearHistoryResponse)
+def clear_guide_history(payload: ClearHistoryRequest) -> ClearHistoryResponse:
+    try:
+        return orchestrator.clear_history(
+            user_id=payload.user_id,
+            role="local_guide",
+            thread_id=payload.thread_id,
+        )
+    except Exception:
+        logger.exception("clear_guide_history_error user_id=%s", payload.user_id)
+        raise HTTPException(status_code=500, detail="Internal error clearing guide history.")
+
+
+@router.delete("/chat/study/history", response_model=ClearHistoryResponse)
+def clear_study_history(payload: ClearHistoryRequest) -> ClearHistoryResponse:
+    try:
+        return orchestrator.clear_history(
+            user_id=payload.user_id,
+            role="study_guide",
+            thread_id=payload.thread_id,
+        )
+    except Exception:
+        logger.exception("clear_study_history_error user_id=%s", payload.user_id)
+        raise HTTPException(status_code=500, detail="Internal error clearing study history.")

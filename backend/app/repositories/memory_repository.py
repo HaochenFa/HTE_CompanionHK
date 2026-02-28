@@ -105,3 +105,19 @@ class MemoryRepository:
         self._session.add(memory_embedding)
         self._session.flush()
         return memory_embedding
+
+    def delete_by_thread(
+        self,
+        *,
+        user_id: str,
+        role: RoleType,
+        thread_id: str,
+    ) -> int:
+        from sqlalchemy import delete as sa_delete
+        stmt = sa_delete(MemoryEntry).where(
+            MemoryEntry.user_id == user_id,
+            MemoryEntry.role == role,
+            MemoryEntry.thread_id == thread_id,
+        )
+        result = self._session.execute(stmt)
+        return result.rowcount  # type: ignore[return-value]

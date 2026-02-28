@@ -98,7 +98,19 @@ class MiniMaxChatProvider(ChatProvider):
                 elif role == "assistant":
                     messages.append(AIMessage(content=content))
 
-        messages.append(HumanMessage(content=message))
+        attachment = ctx.get("attachment")
+        if attachment and isinstance(attachment, dict) and attachment.get("has_base64"):
+            base64_data = ctx.get("attachment_base64", "")
+            mime_type = attachment.get("mime_type", "image/jpeg")
+            if base64_data:
+                messages.append(HumanMessage(content=[
+                    {"type": "text", "text": message},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_data}"}},
+                ]))
+            else:
+                messages.append(HumanMessage(content=message))
+        else:
+            messages.append(HumanMessage(content=message))
         return self._invoke_with_messages(messages)
 
     def _invoke_with_messages(self, messages: list[Any]) -> str:

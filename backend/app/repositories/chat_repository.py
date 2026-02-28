@@ -128,3 +128,19 @@ class ChatRepository:
         )
         rows = self._session.execute(stmt).all()
         return [(chat_message, safety_event) for chat_message, safety_event in rows]
+
+    def delete_thread_messages(
+        self,
+        *,
+        user_id: str,
+        role: RoleType,
+        thread_id: str,
+    ) -> int:
+        from sqlalchemy import delete as sa_delete
+        stmt = sa_delete(ChatMessage).where(
+            ChatMessage.user_id == user_id,
+            ChatMessage.role == role,
+            ChatMessage.thread_id == thread_id,
+        )
+        result = self._session.execute(stmt)
+        return result.rowcount  # type: ignore[return-value]
