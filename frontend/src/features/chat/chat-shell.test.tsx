@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatShell } from "@/features/chat/chat-shell";
 import * as chatApi from "@/lib/api/chat";
@@ -6,9 +6,11 @@ import * as recommendationApi from "@/lib/api/recommendations";
 
 vi.mock("@/lib/api/chat", () => ({
   postChatMessage: vi.fn(),
+  getChatHistory: vi.fn(),
 }));
 vi.mock("@/lib/api/recommendations", () => ({
   postRecommendations: vi.fn(),
+  postRecommendationHistory: vi.fn(),
 }));
 vi.mock("@/components/weather-provider", () => ({
   useWeather: () => ({ condition: "unknown", isDay: true, temperatureC: null }),
@@ -18,6 +20,12 @@ vi.mock("@/components/weather-provider", () => ({
 describe("ChatShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(chatApi.getChatHistory).mockImplementation(async ({ user_id, role, thread_id }) => ({
+      user_id,
+      role,
+      thread_id: thread_id ?? `${user_id}-${role}-thread`,
+      turns: [],
+    }));
     vi.mocked(recommendationApi.postRecommendations).mockResolvedValue({
       request_id: "recommendation-request",
       recommendations: [],
@@ -27,6 +35,9 @@ describe("ChatShell", () => {
         degraded: false,
         fallback_reason: null,
       },
+    });
+    vi.mocked(recommendationApi.postRecommendationHistory).mockResolvedValue({
+      results: [],
     });
   });
 
@@ -96,6 +107,7 @@ describe("ChatShell", () => {
         query: "I want a half-day walk plan.",
         latitude: 22.3193,
         longitude: 114.1694,
+        chat_request_id: "local-guide-request",
         max_results: 5,
         travel_mode: "walking",
       });
@@ -137,19 +149,21 @@ describe("ChatShell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Local Guide/i }));
     await waitFor(() => {
-      expect(screen.queryByText("Companion space reply.")).not.toBeInTheDocument();
+      const localLog = screen.getByRole("log", { name: /Local Guide conversation/i });
+      expect(within(localLog).queryByText("Companion space reply.")).not.toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByLabelText("Message input"), {
       target: { value: "Plan a quick evening route." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
-    expect(await screen.findByText("Local guide space reply.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Local guide space reply.")).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Companion/i }));
     expect(await screen.findByText("Companion space reply.")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByText("Local guide space reply.")).not.toBeInTheDocument();
+      const companionLog = screen.getByRole("log", { name: /Companion conversation/i });
+      expect(within(companionLog).queryByText("Local guide space reply.")).not.toBeInTheDocument();
     });
   });
 
@@ -213,5 +227,31 @@ describe("ChatShell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Companion/i }));
     expect(await screen.findByText("You are not alone")).toBeInTheDocument();
+  });
+
+  it("hydrates history from backend on load", async () => {
+    vi.mocked(chatApi.getChatHistory).mockResolvedValue({
+      user_id: "demo-user",
+      role: "companion",
+      thread_id: "demo-user-companion-thread",
+      turns: [
+        {
+          request_id: "turn-1",
+          thread_id: "demo-user-companion-thread",
+          created_at: "2026-02-28T09:00:00Z",
+          user_message: "Hello there",
+          assistant_reply: "Hi, I am here with you.",
+          safety: {
+            risk_level: "low",
+            show_crisis_banner: false,
+          },
+        },
+      ],
+    });
+
+    render(<ChatShell />);
+
+    expect(await screen.findByText("Hello there")).toBeInTheDocument();
+    expect(await screen.findByText("Hi, I am here with you.")).toBeInTheDocument();
   });
 });

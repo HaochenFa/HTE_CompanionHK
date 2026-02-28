@@ -20,12 +20,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SafetyBanner } from "@/components/safety-banner";
 import { WeatherIsland } from "@/components/weather-island";
 import { parseAssistantMessage } from "@/features/chat/assistant-message-parser";
+import { roleToSlug } from "@/features/chat/role-routing";
 import { MapCanvas } from "@/features/recommendations/map-canvas";
 import { RecommendationList } from "@/features/recommendations/recommendation-list";
 import type { RecommendationResponse } from "@/features/recommendations/types";
 import type { ChatResponse, Role } from "@/features/chat/types";
-import { postChatMessage } from "@/lib/api/chat";
-import { postRecommendations } from "@/lib/api/recommendations";
+import { getChatHistory, postChatMessage } from "@/lib/api/chat";
+import { postRecommendationHistory, postRecommendations } from "@/lib/api/recommendations";
 import {
   spring,
   springGentle,
@@ -42,6 +43,13 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+};
+
+type LocalGuideTurnSummary = {
+  assistantRequestId: string;
+  timestamp: number;
+  userQuery: string;
+  assistantPreview: string;
 };
 
 const ROLE_OPTIONS: Role[] = ["companion", "local_guide", "study_guide"];
@@ -132,12 +140,26 @@ function buildInitialSafetyMap(): Record<Role, ChatResponse["safety"] | null> {
   return { companion: null, local_guide: null, study_guide: null };
 }
 
+function buildInitialRoleFlagMap(initialValue: boolean): Record<Role, boolean> {
+  return {
+    companion: initialValue,
+    local_guide: initialValue,
+    study_guide: initialValue,
+  };
+}
+
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function roleColor(role: Role): string {
   return `var(--role-${role.replace("_", "-")})`;
+}
+
+function compactText(input: string, maxLen: number): string {
+  const normalized = input.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLen) return normalized;
+  return `${normalized.slice(0, maxLen).trimEnd()}...`;
 }
 
 /* ─── TypingIndicator ─── */
@@ -347,6 +369,8 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
   const prefersReducedMotion = useReducedMotion();
   const [activeRole, setActiveRole] = useState<Role>(initialRole);
   const threadIdRef = useRef(buildInitialThreadMap(userId));
+  const historyLoadedRef = useRef(buildInitialRoleFlagMap(false));
+  const historyLoadingRef = useRef(buildInitialRoleFlagMap(false));
   const [messagesByRole, setMessagesByRole] =
     useState<Record<Role, ChatMessage[]>>(buildInitialMessageMap());
   const [input, setInput] = useState("");
@@ -356,23 +380,74 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
     useState<Record<Role, boolean>>(buildInitialBannerMap());
   const [safetyByRole, setSafetyByRole] =
     useState<Record<Role, ChatResponse["safety"] | null>>(buildInitialSafetyMap());
+  const [isHistoryLoadingByRole, setIsHistoryLoadingByRole] =
+    useState<Record<Role, boolean>>(buildInitialRoleFlagMap(false));
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
-  const [recommendationResponse, setRecommendationResponse] =
-    useState<RecommendationResponse | null>(null);
-  const [recommendationError, setRecommendationError] = useState<string | null>(null);
-  const [isRecommendationLoading, setIsRecommendationLoading] = useState(false);
+  const [recommendationsByAssistantRequestId, setRecommendationsByAssistantRequestId] = useState<
+    Record<string, RecommendationResponse>
+  >({});
+  const [recommendationErrorByAssistantRequestId, setRecommendationErrorByAssistantRequestId] =
+    useState<Record<string, string | null>>({});
+  const [recommendationLoadingByAssistantRequestId, setRecommendationLoadingByAssistantRequestId] =
+    useState<Record<string, boolean>>({});
+  const [selectedRecommendationRequestId, setSelectedRecommendationRequestId] = useState<
+    string | null
+  >(null);
   const [showScrollFAB, setShowScrollFAB] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesByRoleRef = useRef(messagesByRole);
 
   const activeMessages = messagesByRole[activeRole];
   const activeSafety = safetyByRole[activeRole];
-  const activeRecommendations = recommendationResponse?.recommendations ?? [];
+  const localGuideTurnSummaries: LocalGuideTurnSummary[] = (() => {
+    const summaries: LocalGuideTurnSummary[] = [];
+    let lastUserMessage = "";
+    for (const message of messagesByRole.local_guide) {
+      if (message.role === "user") {
+        lastUserMessage = message.text;
+        continue;
+      }
+      const assistantPreview = parseAssistantMessage(message.text).finalAnswer;
+      summaries.push({
+        assistantRequestId: message.id,
+        timestamp: message.timestamp,
+        userQuery: lastUserMessage,
+        assistantPreview,
+      });
+    }
+    return summaries;
+  })();
+  const localGuideAssistantRequestIds = localGuideTurnSummaries.map((turn) => turn.assistantRequestId);
+  const resolvedSelectedRecommendationRequestId = (() => {
+    if (activeRole !== "local_guide") return null;
+    if (selectedRecommendationRequestId) return selectedRecommendationRequestId;
+    return localGuideAssistantRequestIds.at(-1) ?? null;
+  })();
+  const selectedTurnSummary = resolvedSelectedRecommendationRequestId
+    ? localGuideTurnSummaries.find(
+        (turn) => turn.assistantRequestId === resolvedSelectedRecommendationRequestId,
+      ) ?? null
+    : null;
+  const selectedRecommendationResponse = resolvedSelectedRecommendationRequestId
+    ? recommendationsByAssistantRequestId[resolvedSelectedRecommendationRequestId] ?? null
+    : null;
+  const selectedRecommendationError = resolvedSelectedRecommendationRequestId
+    ? recommendationErrorByAssistantRequestId[resolvedSelectedRecommendationRequestId] ?? null
+    : null;
+  const isSelectedRecommendationLoading = resolvedSelectedRecommendationRequestId
+    ? Boolean(recommendationLoadingByAssistantRequestId[resolvedSelectedRecommendationRequestId])
+    : false;
+  const activeRecommendations = selectedRecommendationResponse?.recommendations ?? [];
   const recommendationCenter =
     activeRecommendations[0]?.location ?? coordinates ?? HONG_KONG_FALLBACK;
   const meta = ROLE_META[activeRole];
+
+  useEffect(() => {
+    messagesByRoleRef.current = messagesByRole;
+  }, [messagesByRole]);
 
   useEffect(() => {
     let active = true;
@@ -385,6 +460,226 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    setActiveRole(initialRole);
+  }, [initialRole]);
+
+  const hydrateRoleHistory = useCallback(
+    async (roleToLoad: Role) => {
+      if (historyLoadedRef.current[roleToLoad] || historyLoadingRef.current[roleToLoad]) return;
+
+      historyLoadingRef.current[roleToLoad] = true;
+      setIsHistoryLoadingByRole((prev) => ({ ...prev, [roleToLoad]: true }));
+
+      try {
+        const history = await getChatHistory({
+          user_id: userId,
+          role: roleToLoad,
+          thread_id: threadIdRef.current[roleToLoad],
+          limit: 50,
+        });
+
+        threadIdRef.current[roleToLoad] = history.thread_id;
+        const hydratedMessages: ChatMessage[] = [];
+        history.turns.forEach((turn) => {
+          const baseTs = Date.parse(turn.created_at);
+          const timestamp = Number.isNaN(baseTs) ? Date.now() : baseTs;
+          hydratedMessages.push({
+            id: `${turn.request_id}-user`,
+            role: "user",
+            text: turn.user_message,
+            timestamp,
+          });
+          hydratedMessages.push({
+            id: turn.request_id,
+            role: "assistant",
+            text: turn.assistant_reply,
+            timestamp: timestamp + 1,
+          });
+        });
+
+        const hadMessagesAtApplyTime = messagesByRoleRef.current[roleToLoad].length > 0;
+        setMessagesByRole((prev) => {
+          const existingMessages = prev[roleToLoad];
+          if (existingMessages.length === 0) {
+            return { ...prev, [roleToLoad]: hydratedMessages };
+          }
+          const seenIds = new Set<string>();
+          const mergedMessages: ChatMessage[] = [];
+          [...hydratedMessages, ...existingMessages].forEach((message) => {
+            if (seenIds.has(message.id)) return;
+            seenIds.add(message.id);
+            mergedMessages.push(message);
+          });
+          return { ...prev, [roleToLoad]: mergedMessages };
+        });
+        if (!hadMessagesAtApplyTime) {
+          const latestTurn = history.turns.at(-1) ?? null;
+          setSafetyByRole((prev) => ({ ...prev, [roleToLoad]: latestTurn?.safety ?? null }));
+          setShowCrisisBannerByRole((prev) => ({
+            ...prev,
+            [roleToLoad]: history.turns.some((turn) => turn.safety.show_crisis_banner),
+          }));
+        }
+
+        if (roleToLoad === "local_guide") {
+          const assistantRequestIds = history.turns.map((turn) => turn.request_id);
+          if (assistantRequestIds.length > 0) {
+            try {
+              const recommendationHistory = await postRecommendationHistory({
+                user_id: userId,
+                role: "local_guide",
+                request_ids: assistantRequestIds,
+              });
+              const nextRecommendationMap: Record<string, RecommendationResponse> = {};
+              recommendationHistory.results.forEach((result) => {
+                nextRecommendationMap[result.request_id] = result;
+              });
+              setRecommendationsByAssistantRequestId((prev) => ({
+                ...prev,
+                ...nextRecommendationMap,
+              }));
+            } catch (fetchError) {
+              setError(
+                fetchError instanceof Error
+                  ? fetchError.message
+                  : "Unable to restore local recommendations.",
+              );
+            }
+          }
+          setSelectedRecommendationRequestId(assistantRequestIds.at(-1) ?? null);
+        }
+
+        historyLoadedRef.current[roleToLoad] = true;
+      } catch (historyError) {
+        setError(
+          historyError instanceof Error
+            ? historyError.message
+            : `Unable to restore ${ROLE_META[roleToLoad].label} history.`,
+        );
+      } finally {
+        historyLoadingRef.current[roleToLoad] = false;
+        setIsHistoryLoadingByRole((prev) => ({ ...prev, [roleToLoad]: false }));
+      }
+    },
+    [userId],
+  );
+
+  useEffect(() => {
+    void hydrateRoleHistory(activeRole);
+  }, [activeRole, hydrateRoleHistory]);
+
+  useEffect(() => {
+    if (activeRole !== "local_guide") return;
+    if (localGuideAssistantRequestIds.length === 0) {
+      if (selectedRecommendationRequestId !== null) {
+        setSelectedRecommendationRequestId(null);
+      }
+      return;
+    }
+    const hasSelected =
+      selectedRecommendationRequestId != null &&
+      localGuideAssistantRequestIds.includes(selectedRecommendationRequestId);
+    if (!hasSelected) {
+      setSelectedRecommendationRequestId(localGuideAssistantRequestIds.at(-1) ?? null);
+    }
+  }, [activeRole, localGuideAssistantRequestIds, selectedRecommendationRequestId]);
+
+  const ensureRecommendationsForTurn = useCallback(
+    async (assistantRequestId: string) => {
+      if (
+        recommendationsByAssistantRequestId[assistantRequestId] ||
+        recommendationLoadingByAssistantRequestId[assistantRequestId]
+      ) {
+        return;
+      }
+      const turnSummary = localGuideTurnSummaries.find(
+        (turn) => turn.assistantRequestId === assistantRequestId,
+      );
+      const query = turnSummary?.userQuery.trim();
+      if (!query) {
+        setRecommendationErrorByAssistantRequestId((prev) => ({
+          ...prev,
+          [assistantRequestId]: "No linked user query found for this turn.",
+        }));
+        return;
+      }
+
+      const loc = coordinates ?? HONG_KONG_FALLBACK;
+      setRecommendationErrorByAssistantRequestId((prev) => ({
+        ...prev,
+        [assistantRequestId]: null,
+      }));
+      setRecommendationLoadingByAssistantRequestId((prev) => ({
+        ...prev,
+        [assistantRequestId]: true,
+      }));
+
+      try {
+        const recommendationResponse = await postRecommendations({
+          user_id: userId,
+          role: "local_guide",
+          query,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          chat_request_id: assistantRequestId,
+          max_results: 5,
+          travel_mode: "walking",
+        });
+        setRecommendationsByAssistantRequestId((prev) => ({
+          ...prev,
+          [assistantRequestId]: recommendationResponse,
+        }));
+      } catch (recommendationError) {
+        setRecommendationErrorByAssistantRequestId((prev) => ({
+          ...prev,
+          [assistantRequestId]:
+            recommendationError instanceof Error
+              ? recommendationError.message
+              : "Unable to load recommendations for this turn.",
+        }));
+      } finally {
+        setRecommendationLoadingByAssistantRequestId((prev) => ({
+          ...prev,
+          [assistantRequestId]: false,
+        }));
+      }
+    },
+    [
+      coordinates,
+      localGuideTurnSummaries,
+      recommendationLoadingByAssistantRequestId,
+      recommendationsByAssistantRequestId,
+      userId,
+    ],
+  );
+
+  const handleSelectRecommendationTurn = useCallback(
+    (assistantRequestId: string) => {
+      setSelectedRecommendationRequestId(assistantRequestId);
+      void ensureRecommendationsForTurn(assistantRequestId);
+    },
+    [ensureRecommendationsForTurn],
+  );
+
+  useEffect(() => {
+    if (activeRole !== "local_guide" || !resolvedSelectedRecommendationRequestId) return;
+    const alreadyResolved =
+      recommendationsByAssistantRequestId[resolvedSelectedRecommendationRequestId] != null ||
+      recommendationLoadingByAssistantRequestId[resolvedSelectedRecommendationRequestId] ||
+      recommendationErrorByAssistantRequestId[resolvedSelectedRecommendationRequestId];
+    if (!alreadyResolved) {
+      void ensureRecommendationsForTurn(resolvedSelectedRecommendationRequestId);
+    }
+  }, [
+    activeRole,
+    ensureRecommendationsForTurn,
+    recommendationErrorByAssistantRequestId,
+    recommendationLoadingByAssistantRequestId,
+    recommendationsByAssistantRequestId,
+    resolvedSelectedRecommendationRequestId,
+  ]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth" });
@@ -428,22 +723,6 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
     setMessagesByRole((prev) => ({ ...prev, [roleAtSend]: [...prev[roleAtSend], userMsg] }));
     setIsSubmitting(true);
 
-    let recPromise: Promise<RecommendationResponse> | null = null;
-    if (roleAtSend === "local_guide") {
-      setRecommendationError(null);
-      setIsRecommendationLoading(true);
-      const loc = coordinates ?? HONG_KONG_FALLBACK;
-      recPromise = postRecommendations({
-        user_id: userId,
-        role: roleAtSend,
-        query: trimmed,
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        max_results: 5,
-        travel_mode: "walking",
-      });
-    }
-
     try {
       const res = await postChatMessage({
         user_id: userId,
@@ -457,26 +736,59 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
         text: res.reply,
         timestamp: Date.now(),
       };
+      threadIdRef.current[roleAtSend] = res.thread_id;
       setMessagesByRole((prev) => ({ ...prev, [roleAtSend]: [...prev[roleAtSend], assistantMsg] }));
       setSafetyByRole((prev) => ({ ...prev, [roleAtSend]: res.safety }));
       if (res.safety.show_crisis_banner) {
         setShowCrisisBannerByRole((prev) => ({ ...prev, [roleAtSend]: true }));
       }
+
+      if (roleAtSend === "local_guide") {
+        const assistantRequestId = res.request_id;
+        const loc = coordinates ?? HONG_KONG_FALLBACK;
+        setSelectedRecommendationRequestId(assistantRequestId);
+        setRecommendationErrorByAssistantRequestId((prev) => ({
+          ...prev,
+          [assistantRequestId]: null,
+        }));
+        setRecommendationLoadingByAssistantRequestId((prev) => ({
+          ...prev,
+          [assistantRequestId]: true,
+        }));
+        try {
+          const recommendationResponse = await postRecommendations({
+            user_id: userId,
+            role: roleAtSend,
+            query: trimmed,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            chat_request_id: assistantRequestId,
+            max_results: 5,
+            travel_mode: "walking",
+          });
+          setRecommendationsByAssistantRequestId((prev) => ({
+            ...prev,
+            [assistantRequestId]: recommendationResponse,
+          }));
+        } catch (recommendationError) {
+          setRecommendationErrorByAssistantRequestId((prev) => ({
+            ...prev,
+            [assistantRequestId]:
+              recommendationError instanceof Error
+                ? recommendationError.message
+                : "Unable to load recommendations.",
+          }));
+        } finally {
+          setRecommendationLoadingByAssistantRequestId((prev) => ({
+            ...prev,
+            [assistantRequestId]: false,
+          }));
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to send message.");
     } finally {
       setIsSubmitting(false);
-    }
-
-    if (recPromise) {
-      try {
-        setRecommendationResponse(await recPromise);
-      } catch (e) {
-        setRecommendationResponse(null);
-        setRecommendationError(e instanceof Error ? e.message : "Unable to load recommendations.");
-      } finally {
-        setIsRecommendationLoading(false);
-      }
     }
   };
 
@@ -529,7 +841,10 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
           return (
             <motion.button
               key={role}
-              onClick={() => setActiveRole(role)}
+              onClick={() => {
+                setActiveRole(role);
+                router.replace(`/chat/${roleToSlug(role)}`);
+              }}
               whileTap={{ scale: 0.95 }}
               className={cn(
                 "relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold cursor-pointer",
@@ -628,7 +943,7 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
                     transition={{ delay: 0.1, ...springGentle }}
                     className="text-base font-medium text-muted-foreground"
                   >
-                    {meta.empty}
+                    {isHistoryLoadingByRole[activeRole] ? "Loading conversation..." : meta.empty}
                   </motion.p>
                 </div>
               )}
@@ -693,33 +1008,116 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
             transition={springGentle}
             className="mx-auto w-full max-w-2xl overflow-hidden px-4 pb-2 md:px-6"
           >
-            {recommendationError && (
-              <div className="mb-2 rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm text-accent-foreground">
-                {recommendationError}
+            {localGuideTurnSummaries.length > 0 && (
+              <div className="mb-2">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Linked Recommendation Turns
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {localGuideTurnSummaries.map((turn) => {
+                    const isSelected =
+                      turn.assistantRequestId === resolvedSelectedRecommendationRequestId;
+                    const linkedResponse = recommendationsByAssistantRequestId[turn.assistantRequestId];
+                    const isLoading = Boolean(
+                      recommendationLoadingByAssistantRequestId[turn.assistantRequestId],
+                    );
+                    const turnError = recommendationErrorByAssistantRequestId[turn.assistantRequestId];
+                    const statusLabel = isLoading
+                      ? "Loading"
+                      : linkedResponse
+                        ? linkedResponse.context.degraded
+                          ? "Fallback"
+                          : "Live"
+                        : turnError
+                          ? "Retry"
+                          : "Tap to load";
+                    return (
+                      <button
+                        key={turn.assistantRequestId}
+                        type="button"
+                        onClick={() => handleSelectRecommendationTurn(turn.assistantRequestId)}
+                        className={cn(
+                          "min-w-56 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                          isSelected
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border/60 bg-card text-muted-foreground hover:bg-muted",
+                        )}
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {formatTime(turn.timestamp)}
+                          </span>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              statusLabel === "Live"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : statusLabel === "Fallback"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <p className="line-clamp-2 text-sm font-semibold text-foreground">
+                          {compactText(turn.userQuery || "Local Guide request", 72)}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                          {compactText(turn.assistantPreview || "Local Guide response", 96)}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
-            {isRecommendationLoading && (
+
+            {selectedRecommendationError && (
+              <div className="mb-2 rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm text-accent-foreground">
+                {selectedRecommendationError}
+              </div>
+            )}
+            {isSelectedRecommendationLoading && (
               <p className="mb-2 text-sm text-muted-foreground animate-pulse-gentle">
                 Fetching local recommendations...
               </p>
             )}
-            {!isRecommendationLoading &&
-              !recommendationError &&
+            {!isSelectedRecommendationLoading &&
+              !selectedRecommendationError &&
               activeRecommendations.length === 0 &&
-              activeMessages.length > 0 && (
+              localGuideTurnSummaries.length > 0 && (
                 <p className="mb-2 text-sm text-muted-foreground">
-                  Send a message to see ranked nearby places and map markers.
+                  No place recommendations were returned for this turn.
                 </p>
               )}
+            {activeMessages.length > 0 && localGuideTurnSummaries.length === 0 && (
+              <p className="mb-2 text-sm text-muted-foreground">
+                Waiting for Local Guide response before loading map suggestions.
+              </p>
+            )}
             {activeRecommendations.length > 0 && (
               <div className="flex flex-col gap-3 pb-2">
-                {recommendationResponse && (
-                  <p className="text-xs text-muted-foreground">
-                    Weather: {recommendationResponse.context.weather_condition}
-                    {recommendationResponse.context.temperature_c != null
-                      ? ` · ${recommendationResponse.context.temperature_c.toFixed(1)}°C`
-                      : ""}
-                  </p>
+                {selectedRecommendationResponse && (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-muted-foreground">
+                      Weather: {selectedRecommendationResponse.context.weather_condition}
+                      {selectedRecommendationResponse.context.temperature_c != null
+                        ? ` · ${selectedRecommendationResponse.context.temperature_c.toFixed(1)}°C`
+                        : ""}
+                    </p>
+                    {selectedRecommendationResponse.context.degraded && (
+                      <p className="text-xs text-amber-700">
+                        Live place data is limited for this turn. Showing best available fallback
+                        results.
+                      </p>
+                    )}
+                    {selectedTurnSummary?.userQuery && (
+                      <p className="text-xs text-muted-foreground">
+                        Based on: <span className="font-medium">{selectedTurnSummary.userQuery}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
                 <MapCanvas
                   apiKey={GOOGLE_MAPS_API_KEY}

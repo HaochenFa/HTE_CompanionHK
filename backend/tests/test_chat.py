@@ -98,3 +98,128 @@ def test_chat_endpoint_high_risk_returns_supportive_refusal_and_banner(monkeypat
     assert body["safety"]["show_crisis_banner"] is True
     assert body["safety"]["policy_action"] == "supportive_refusal"
     assert "cannot help with anything that could harm you" in body["reply"].lower()
+
+
+def test_role_specific_chat_aliases_force_expected_role(monkeypatch) -> None:
+    captured_roles: list[str] = []
+
+    def fake_generate_reply(payload):
+        captured_roles.append(payload.role)
+        return {
+            "request_id": "r-1",
+            "thread_id": payload.thread_id or f"{payload.user_id}-{payload.role}-thread",
+            "runtime": "simple",
+            "provider": "mock",
+            "reply": "ok",
+            "safety": {
+                "risk_level": "low",
+                "show_crisis_banner": False,
+                "policy_action": "allow",
+                "monitor_provider": "rules",
+                "degraded": False,
+                "fallback_reason": None,
+            },
+        }
+
+    monkeypatch.setattr(chat_route.orchestrator, "generate_reply", fake_generate_reply)
+
+    common_payload = {
+        "user_id": "test-user",
+        "thread_id": "thread-1",
+        "message": "hello",
+    }
+    assert client.post("/chat/companion", json=common_payload).status_code == 200
+    assert client.post("/chat/guide", json=common_payload).status_code == 200
+    assert client.post("/chat/study", json=common_payload).status_code == 200
+    assert captured_roles == ["companion", "local_guide", "study_guide"]
+
+
+def test_chat_history_endpoint_returns_turns(monkeypatch) -> None:
+    def fake_get_history(*, user_id: str, role: str, thread_id: str | None, limit: int):
+        _ = role, limit
+        return {
+            "user_id": user_id,
+            "role": "companion",
+            "thread_id": thread_id or "test-user-companion-thread",
+            "turns": [
+                {
+                    "request_id": "turn-1",
+                    "thread_id": thread_id or "test-user-companion-thread",
+                    "created_at": "2026-02-28T00:00:00Z",
+                    "user_message": "hi",
+                    "assistant_reply": "hello",
+                    "safety": {
+                        "risk_level": "low",
+                        "show_crisis_banner": False,
+                        "policy_action": "allow",
+                        "monitor_provider": "rules",
+                        "degraded": False,
+                        "fallback_reason": None,
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr(chat_route.orchestrator, "get_history", fake_get_history)
+    response = client.get("/chat/history", params={"user_id": "test-user", "role": "companion"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user_id"] == "test-user"
+    assert body["role"] == "companion"
+    assert len(body["turns"]) == 1
+    assert body["turns"][0]["request_id"] == "turn-1"
+
+
+def test_chat_guide_history_alias_forces_local_guide_role(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_get_history(*, user_id: str, role: str, thread_id: str | None, limit: int):
+        _ = user_id, thread_id, limit
+        captured["role"] = role
+        return {
+            "user_id": "test-user",
+            "role": role,
+            "thread_id": "test-user-local_guide-thread",
+            "turns": [],
+        }
+
+    monkeypatch.setattr(chat_route.orchestrator, "get_history", fake_get_history)
+    response = client.get("/chat/guide/history", params={"user_id": "test-user"})
+    assert response.status_code == 200
+    assert captured["role"] == "local_guide"
+    assert response.json()["role"] == "local_guide"
+
+
+def test_api_prefixed_chat_alias_reaches_backend(monkeypatch) -> None:
+    captured_roles: list[str] = []
+
+    def fake_generate_reply(payload):
+        captured_roles.append(payload.role)
+        return {
+            "request_id": "r-api-1",
+            "thread_id": payload.thread_id or f"{payload.user_id}-{payload.role}-thread",
+            "runtime": "simple",
+            "provider": "mock",
+            "reply": "ok",
+            "safety": {
+                "risk_level": "low",
+                "show_crisis_banner": False,
+                "policy_action": "allow",
+                "monitor_provider": "rules",
+                "degraded": False,
+                "fallback_reason": None,
+            },
+        }
+
+    monkeypatch.setattr(chat_route.orchestrator, "generate_reply", fake_generate_reply)
+
+    payload = {
+        "user_id": "test-user",
+        "thread_id": "thread-api-1",
+        "message": "hello",
+    }
+    response = client.post("/api/chat/companion", json=payload)
+
+    assert response.status_code == 200
+    assert captured_roles == ["companion"]

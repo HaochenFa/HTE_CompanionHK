@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, Field
 
@@ -9,6 +10,12 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     thread_id: str | None = Field(default=None, min_length=1)
     role: ChatRole = "companion"
+
+
+class RoleChatRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    thread_id: str | None = Field(default=None, min_length=1)
 
 
 class SafetyResult(BaseModel):
@@ -29,3 +36,19 @@ class ChatResponse(BaseModel):
     provider: str
     reply: str
     safety: SafetyResult
+
+
+class ChatTurn(BaseModel):
+    request_id: str
+    thread_id: str
+    created_at: datetime
+    user_message: str
+    assistant_reply: str
+    safety: SafetyResult
+
+
+class ChatHistoryResponse(BaseModel):
+    user_id: str
+    role: ChatRole
+    thread_id: str
+    turns: list[ChatTurn] = Field(default_factory=list)

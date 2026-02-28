@@ -47,6 +47,7 @@ This document defines CompanionHK internal API contracts between frontend and ba
   "query": "quiet cafe in central",
   "latitude": 22.2819,
   "longitude": 114.1589,
+  "chat_request_id": "chat-turn-request-id",
   "max_results": 5,
   "preference_tags": ["quiet", "wifi"],
   "travel_mode": "walking"
@@ -87,10 +88,46 @@ This document defines CompanionHK internal API contracts between frontend and ba
 }
 ```
 
+### Recommendation History Batch Endpoint
+
+Use this endpoint to restore recommendation sets tied to prior assistant turns.
+
+- Method: `POST`
+- Path: `/recommendations/history`
+- JSON body:
+
+```json
+{
+  "user_id": "demo-user",
+  "role": "local_guide",
+  "request_ids": ["turn-req-1", "turn-req-2", "turn-req-3"]
+}
+```
+
+- Response shape:
+
+```json
+{
+  "results": [
+    {
+      "request_id": "turn-req-1",
+      "recommendations": [],
+      "context": {
+        "weather_condition": "cloudy",
+        "temperature_c": 26.1,
+        "degraded": false,
+        "fallback_reason": null
+      }
+    }
+  ]
+}
+```
+
 ## Validation Rules
 
 - `role` must be `companion | local_guide | study_guide`.
 - Recommendation flow is optimized for `local_guide`.
+- `chat_request_id` is optional and should be provided to bind recommendation data to a specific assistant turn id.
 - `max_results` is clamped to `3..5`.
 - `travel_mode` supports `walking | transit | driving`.
 - `fit_score` is normalized to `0..1`.

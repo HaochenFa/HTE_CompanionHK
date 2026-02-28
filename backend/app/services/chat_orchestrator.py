@@ -27,7 +27,14 @@ from app.repositories.memory_repository import MemoryRepository
 from app.repositories.user_repository import UserRepository
 from app.runtime.base import ConversationRuntime
 from app.runtime.factory import build_runtime
-from app.schemas.chat import ChatRequest, ChatResponse, ChatRole, SafetyResult
+from app.schemas.chat import (
+    ChatHistoryResponse,
+    ChatRequest,
+    ChatResponse,
+    ChatRole,
+    ChatTurn,
+    SafetyResult,
+)
 from app.schemas.safety import SafetyEvaluateRequest
 from app.services.safety_monitor_service import SafetyMonitorService
 
@@ -380,4 +387,55 @@ class ChatOrchestrator:
             provider=provider_route,
             reply=reply,
             safety=safety,
+        )
+
+    def get_history(
+        self,
+        *,
+        user_id: str,
+        role: ChatRole,
+        thread_id: str | None = None,
+        limit: int = 50,
+    ) -> ChatHistoryResponse:
+        bounded_limit = max(1, min(limit, 200))
+        resolved_thread_id = thread_id or f"{user_id}-{role}-thread"
+        role_enum = RoleType(role)
+        with SessionLocal() as session:
+            chat_repository = ChatRepository(session)
+            rows = chat_repository.list_recent_messages_with_safety(
+                user_id=user_id,
+                role=role_enum,
+                thread_id=resolved_thread_id,
+                limit=bounded_limit,
+            )
+
+        turns: list[ChatTurn] = []
+        for message, safety_event in reversed(rows):
+            safety = SafetyResult(
+                risk_level=(
+                    cast(str, safety_event.risk_level.value)
+                    if safety_event is not None
+                    else "low"
+                ),
+                show_crisis_banner=(
+                    safety_event.show_crisis_banner if safety_event is not None else False
+                ),
+                emotion_label=safety_event.emotion_label if safety_event is not None else None,
+                emotion_score=safety_event.emotion_score if safety_event is not None else None,
+            )
+            turns.append(
+                ChatTurn(
+                    request_id=message.request_id,
+                    thread_id=message.thread_id,
+                    created_at=message.created_at,
+                    user_message=message.user_message,
+                    assistant_reply=message.assistant_reply,
+                    safety=safety,
+                )
+            )
+        return ChatHistoryResponse(
+            user_id=user_id,
+            role=role,
+            thread_id=resolved_thread_id,
+            turns=turns,
         )

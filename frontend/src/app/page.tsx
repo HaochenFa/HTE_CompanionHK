@@ -15,8 +15,9 @@ import { useAuth } from "@/lib/auth-context";
 import { WeatherBackground } from "@/components/weather-background";
 import { WeatherIsland } from "@/components/weather-island";
 import { Button } from "@/components/ui/button";
-import { spring, springGentle, springBouncy } from "@/lib/motion-config";
+import { springGentle, springBouncy } from "@/lib/motion-config";
 import type { Role } from "@/features/chat/types";
+import { roleToSlug } from "@/features/chat/role-routing";
 
 const ROLES: {
   id: Role;
@@ -149,7 +150,7 @@ export default function HomePage() {
               transition={{ delay: 0.15 + i * 0.08, ...springGentle }}
               whileHover={{ scale: 1.02, y: -2 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => router.push(`/chat/${role.id}`)}
+              onClick={() => router.push(`/chat/${roleToSlug(role.id)}`)}
               className={`
                 group relative overflow-hidden rounded-2xl border border-border/50
                 bg-card/70 p-5 text-left shadow-(--shadow-warm-sm)

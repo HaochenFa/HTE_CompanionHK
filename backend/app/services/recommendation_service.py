@@ -2,6 +2,7 @@ import logging
 import math
 from hashlib import sha256
 from typing import Any
+from urllib.parse import quote_plus
 from uuid import uuid4
 
 from app.core.database import SessionLocal
@@ -19,6 +20,7 @@ from app.repositories.recommendation_repository import RecommendationRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.recommendations import (
     Coordinates,
+    RecommendationHistoryResponse,
     RecommendationContext,
     RecommendationItem,
     RecommendationRequest,
@@ -32,6 +34,120 @@ _INDOOR_PLACE_TYPES = {"cafe", "restaurant",
                        "museum", "shopping_mall", "library"}
 _FALLBACK_DISCOVERY_QUERIES = ["cafe", "park", "museum", "restaurant"]
 _WEATHER_INDOOR_CONDITIONS = {"rain", "drizzle", "thunderstorm", "snow"}
+_HK_FALLBACK_PLACE_CATALOG: list[dict[str, Any]] = [
+    {
+        "place_id": "hk-hung-hom-promenade",
+        "name": "Hung Hom Promenade",
+        "address": "Hung Hom Waterfront, Kowloon",
+        "types": ["park", "point_of_interest"],
+        "latitude": 22.3021,
+        "longitude": 114.1872,
+    },
+    {
+        "place_id": "hk-kowloon-park",
+        "name": "Kowloon Park",
+        "address": "22 Austin Road, Tsim Sha Tsui",
+        "types": ["park", "point_of_interest"],
+        "latitude": 22.3019,
+        "longitude": 114.1716,
+    },
+    {
+        "place_id": "hk-art-park",
+        "name": "Art Park (West Kowloon Cultural District)",
+        "address": "West Kowloon, Kowloon",
+        "types": ["park", "tourist_attraction", "point_of_interest"],
+        "latitude": 22.2937,
+        "longitude": 114.1580,
+    },
+    {
+        "place_id": "hk-victoria-park",
+        "name": "Victoria Park",
+        "address": "1 Hing Fat Street, Causeway Bay",
+        "types": ["park", "point_of_interest"],
+        "latitude": 22.2803,
+        "longitude": 114.1916,
+    },
+    {
+        "place_id": "hk-hong-kong-park",
+        "name": "Hong Kong Park",
+        "address": "19 Cotton Tree Drive, Central",
+        "types": ["park", "point_of_interest"],
+        "latitude": 22.2772,
+        "longitude": 114.1616,
+    },
+    {
+        "place_id": "hk-nan-lian-garden",
+        "name": "Nan Lian Garden",
+        "address": "60 Fung Tak Road, Diamond Hill",
+        "types": ["park", "tourist_attraction", "point_of_interest"],
+        "latitude": 22.3402,
+        "longitude": 114.2017,
+    },
+    {
+        "place_id": "hk-k11-musea",
+        "name": "K11 MUSEA",
+        "address": "18 Salisbury Road, Tsim Sha Tsui",
+        "types": ["shopping_mall", "point_of_interest"],
+        "latitude": 22.2933,
+        "longitude": 114.1745,
+    },
+    {
+        "place_id": "hk-harbour-city",
+        "name": "Harbour City",
+        "address": "3-27 Canton Road, Tsim Sha Tsui",
+        "types": ["shopping_mall", "point_of_interest"],
+        "latitude": 22.2952,
+        "longitude": 114.1679,
+    },
+    {
+        "place_id": "hk-pmq",
+        "name": "PMQ",
+        "address": "35 Aberdeen Street, Central",
+        "types": ["art_gallery", "point_of_interest"],
+        "latitude": 22.2838,
+        "longitude": 114.1505,
+    },
+    {
+        "place_id": "hk-tai-kwun",
+        "name": "Tai Kwun",
+        "address": "10 Hollywood Road, Central",
+        "types": ["museum", "point_of_interest"],
+        "latitude": 22.2819,
+        "longitude": 114.1549,
+    },
+    {
+        "place_id": "hk-kam-wah-cafe",
+        "name": "Kam Wah Cafe",
+        "address": "47 Bute Street, Mong Kok",
+        "types": ["cafe", "food"],
+        "latitude": 22.3241,
+        "longitude": 114.1688,
+    },
+    {
+        "place_id": "hk-sing-heung-yuen",
+        "name": "Sing Heung Yuen",
+        "address": "2 Mee Lun Street, Central",
+        "types": ["restaurant", "food"],
+        "latitude": 22.2841,
+        "longitude": 114.1542,
+    },
+    {
+        "place_id": "hk-ozone",
+        "name": "OZONE",
+        "address": "Ritz-Carlton Hong Kong, West Kowloon",
+        "types": ["bar", "night_club", "point_of_interest"],
+        "latitude": 22.3036,
+        "longitude": 114.1609,
+    },
+    {
+        "place_id": "hk-quinary",
+        "name": "Quinary",
+        "address": "56-58 Hollywood Road, Central",
+        "types": ["bar", "night_club", "point_of_interest"],
+        "latitude": 22.2812,
+        "longitude": 114.1547,
+    },
+]
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +157,30 @@ def _tokenize(text: str) -> set[str]:
 
 def _clamp_score(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def _approx_distance_meters(
+    *, origin_latitude: float, origin_longitude: float, latitude: float, longitude: float
+) -> int:
+    # Equirectangular approximation is accurate enough for nearby HK urban ranges.
+    meters_per_degree_lat = 111_320.0
+    meters_per_degree_lng = 111_320.0 * math.cos(math.radians(origin_latitude))
+    delta_lat = (latitude - origin_latitude) * meters_per_degree_lat
+    delta_lng = (longitude - origin_longitude) * meters_per_degree_lng
+    return max(1, int(round(math.sqrt((delta_lat * delta_lat) + (delta_lng * delta_lng)))))
+
+
+def _format_distance_text(distance_meters: int) -> str:
+    if distance_meters < 1000:
+        rounded = max(50, int(round(distance_meters / 50.0) * 50))
+        return f"{rounded} m"
+    return f"{distance_meters / 1000:.1f} km"
+
+
+def _format_walking_duration_text(distance_meters: int) -> str:
+    # Approximate walking speed: 4.8 km/h => ~80 m/min.
+    minutes = max(3, int(round(distance_meters / 80)))
+    return f"{minutes} mins"
 
 
 class RecommendationService:
@@ -284,40 +424,112 @@ class RecommendationService:
         longitude: float,
         query: str
     ) -> list[RecommendationItem]:
-        fallback_names = [
-            "Nearby Cafe Option",
-            "Nearby Park Walk",
-            "Nearby Cultural Stop"
-        ]
-        fallback_types = [
-            ["cafe", "food"],
-            ["park", "point_of_interest"],
-            ["museum", "point_of_interest"]
-        ]
-        offsets = [0.002, -0.002, 0.0035]
+        ranked: list[tuple[float, dict[str, Any], int]] = []
+        for place in _HK_FALLBACK_PLACE_CATALOG:
+            distance_meters = _approx_distance_meters(
+                origin_latitude=latitude,
+                origin_longitude=longitude,
+                latitude=float(place["latitude"]),
+                longitude=float(place["longitude"]),
+            )
+            query_score = self._query_relevance_score(
+                query=query,
+                place_name=str(place["name"]),
+                place_types=[str(t) for t in list(place["types"])],
+            )
+            distance_score = self._distance_score(distance_meters=distance_meters)
+            composite = _clamp_score((0.65 * query_score) + (0.35 * distance_score))
+            ranked.append((round(composite, 4), place, distance_meters))
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        top_candidates = ranked[:5]
+
         recommendations: list[RecommendationItem] = []
-        for index, name in enumerate(fallback_names):
+        for score, place, distance_meters in top_candidates:
+            query_str = quote_plus(f"{place['name']} {place['address']}")
             recommendations.append(
                 RecommendationItem(
-                    place_id=f"fallback-{index + 1}",
-                    name=name,
-                    address="Hong Kong",
+                    place_id=str(place["place_id"]),
+                    name=str(place["name"]),
+                    address=str(place["address"]),
                     rating=None,
                     user_ratings_total=None,
-                    types=fallback_types[index],
+                    types=[str(t) for t in list(place["types"])],
                     location=Coordinates(
-                        latitude=latitude + offsets[index],
-                        longitude=longitude - offsets[index]
+                        latitude=float(place["latitude"]),
+                        longitude=float(place["longitude"]),
                     ),
                     photo_url=None,
-                    maps_uri=None,
-                    distance_text=None,
-                    duration_text=None,
-                    fit_score=0.35,
-                    rationale=f"Fallback recommendation for '{query}' while live place data is unavailable."
+                    maps_uri=f"https://www.google.com/maps/search/?api=1&query={query_str}",
+                    distance_text=_format_distance_text(distance_meters),
+                    duration_text=_format_walking_duration_text(distance_meters),
+                    fit_score=max(0.35, score),
+                    rationale=(
+                        f"Known Hong Kong option matched to '{query}' while live place data is limited."
+                    ),
                 )
             )
         return recommendations
+
+    def get_history(
+        self,
+        *,
+        user_id: str,
+        role: str,
+        request_ids: list[str],
+    ) -> RecommendationHistoryResponse:
+        if not request_ids:
+            return RecommendationHistoryResponse(results=[])
+        role_enum = RoleType(role)
+        with SessionLocal() as session:
+            recommendation_repository = RecommendationRepository(session)
+            rows = recommendation_repository.list_requests_by_ids(
+                user_id=user_id,
+                role=role_enum,
+                request_ids=request_ids,
+            )
+
+        rows_by_request_id = {row.request_id: row for row in rows}
+        results: list[RecommendationResponse] = []
+        for request_id in request_ids:
+            row = rows_by_request_id.get(request_id)
+            if row is None:
+                continue
+            items = sorted(row.items, key=lambda item: item.fit_score, reverse=True)
+            recommendations = [
+                RecommendationItem(
+                    place_id=item.place_id,
+                    name=item.name,
+                    address=item.address,
+                    rating=item.rating,
+                    user_ratings_total=item.user_ratings_total,
+                    types=item.types,
+                    location=Coordinates(
+                        latitude=item.place_latitude,
+                        longitude=item.place_longitude,
+                    ),
+                    photo_url=item.photo_url,
+                    maps_uri=item.maps_uri,
+                    distance_text=item.distance_text,
+                    duration_text=item.duration_text,
+                    fit_score=item.fit_score,
+                    rationale=item.rationale,
+                )
+                for item in items
+            ]
+            results.append(
+                RecommendationResponse(
+                    request_id=row.request_id,
+                    recommendations=recommendations,
+                    context=RecommendationContext(
+                        weather_condition=row.weather_condition or "unknown",
+                        temperature_c=row.temperature_c,
+                        degraded=row.degraded,
+                        fallback_reason=row.fallback_reason,
+                    ),
+                )
+            )
+        return RecommendationHistoryResponse(results=results)
 
     def generate_recommendations(
         self,
@@ -349,6 +561,7 @@ class RecommendationService:
             if len(deduplicated_places) >= max_results * 2:
                 break
 
+        live_candidate_count = len(deduplicated_places)
         scored_items: list[RecommendationItem] = []
         weather_condition = weather_response.weather.condition
         for place in deduplicated_places.values():
@@ -439,15 +652,18 @@ class RecommendationService:
 
         if len(recommendations) < 3:
             degraded = True
-            fallback_reason = fallback_reason or "insufficient_live_place_results"
+            fallback_reason = fallback_reason or (
+                "live_place_search_empty" if live_candidate_count == 0 else "insufficient_live_place_results"
+            )
             recommendations = self._fallback_recommendations(
                 latitude=request.latitude,
                 longitude=request.longitude,
                 query=request.query
             )[:max_results]
 
+        request_id = request.chat_request_id or str(uuid4())
         response = RecommendationResponse(
-            request_id=str(uuid4()),
+            request_id=request_id,
             recommendations=recommendations,
             context=RecommendationContext(
                 weather_condition=weather_condition,

@@ -106,3 +106,25 @@ class ChatRepository:
             .limit(limit)
         )
         return list(self._session.scalars(stmt))
+
+    def list_recent_messages_with_safety(
+        self,
+        *,
+        user_id: str,
+        role: RoleType,
+        thread_id: str,
+        limit: int,
+    ) -> list[tuple[ChatMessage, SafetyEvent | None]]:
+        stmt = (
+            select(ChatMessage, SafetyEvent)
+            .outerjoin(SafetyEvent, SafetyEvent.chat_message_id == ChatMessage.id)
+            .where(
+                ChatMessage.user_id == user_id,
+                ChatMessage.role == role,
+                ChatMessage.thread_id == thread_id,
+            )
+            .order_by(desc(ChatMessage.created_at))
+            .limit(limit)
+        )
+        rows = self._session.execute(stmt).all()
+        return [(chat_message, safety_event) for chat_message, safety_event in rows]

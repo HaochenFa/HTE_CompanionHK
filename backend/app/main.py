@@ -26,6 +26,11 @@ app.include_router(weather_router)
 app.include_router(recommendations_router)
 app.include_router(safety_router)
 app.include_router(voice_router)
+app.include_router(chat_router, prefix="/api")
+app.include_router(weather_router, prefix="/api")
+app.include_router(recommendations_router, prefix="/api")
+app.include_router(safety_router, prefix="/api")
+app.include_router(voice_router, prefix="/api")
 
 
 @app.get("/")
