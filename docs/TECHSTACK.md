@@ -6,10 +6,11 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 
 - Frontend: `Next.js (App Router)` + `TypeScript` + `MUI`
 - Backend API: `Python` + `FastAPI`
+- Stateful orchestration runtime: `LangGraph`-capable service boundary (feature-flagged)
 - Primary database: `PostgreSQL`
 - Fast cache/session context: `Redis`
 - Vector memory: `pgvector` in PostgreSQL
-- Model orchestration: provider adapter layer with `MiniMax` path
+- Model orchestration: provider adapter layer with `MiniMax` path, runnable through LangGraph stateful threads
 - Voice providers: `ElevenLabs` and `Cantonese.ai`
 - Local recommendation data: `Google Maps API` + weather source + user context
 - Infra target: AWS-first deployment
@@ -29,9 +30,11 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 
 ## API and Orchestration Layer
 
-- Stack: `FastAPI` + `Pydantic`
+- Stack: `FastAPI` + `Pydantic` + LangGraph-capable runtime boundary
 - Responsibilities:
   - prompt orchestration and provider routing,
+  - maintain `thread_id` continuity for stateful turns,
+  - select orchestration runtime (`simple` or `langgraph`) via feature flag,
   - safety policy enforcement,
   - memory read/write policy,
   - recommendation aggregation (maps/weather/mood/preferences),
@@ -42,11 +45,17 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 - `PostgreSQL`:
   - users, profiles, preferences, long-term memory records, audit metadata.
 - `pgvector`:
-  - embedding storage and semantic retrieval for long-term memory.
+  - semantic retrieval over long-term memory and extra knowledge materials.
 - `Redis`:
   - short-term context windows with TTL,
   - temporary state,
   - rate-limit counters.
+
+Memory strategy:
+
+- Hybrid long-term memory:
+  - structured profile memory in Postgres (facts/preferences),
+  - retrieval memory via pgvector for fuzzy recall and extra materials.
 
 ## AI and Safety Layer
 

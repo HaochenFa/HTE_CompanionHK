@@ -43,8 +43,10 @@ Core dependency rule:
 - Backend Lead:
   - scaffold FastAPI service and health route,
   - define provider adapter interfaces,
-  - add `/chat` endpoint with mocked response.
+  - add `/chat` endpoint with mocked response and `thread_id` contract.
 - Integration Lead:
+  - scaffold LangGraph-capable runtime boundary behind feature flag,
+  - keep MiniMax adapter path active under both simple and LangGraph runtimes.
   - configure Google Maps + weather API stubs,
   - configure MiniMax adapter skeleton,
   - set up voice adapter contracts.
@@ -63,7 +65,8 @@ Deliverable:
   - implement anti-suicide banner and crisis resources panel.
 - Backend Lead:
   - add supportive system prompt and refusal policy layer,
-  - implement safety decision API.
+  - implement safety decision API,
+  - wire safety context into runtime state for each `thread_id`.
 - Integration Lead:
   - wire MiniMax model route,
   - implement emotion/risk scoring path (small model/process),
@@ -79,9 +82,9 @@ Deliverable:
   - preference capture UI (tone, topics, locale hints).
 - Backend Lead:
   - implement short-term memory in Redis with TTL,
-  - implement long-term memory schema in Postgres.
+  - implement long-term profile memory schema in Postgres.
 - Integration Lead:
-  - add embeddings + pgvector retrieval path,
+  - add embeddings + pgvector retrieval path for extra materials and fuzzy recall,
   - add memory summarization for long sessions.
 
 Deliverable:

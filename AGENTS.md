@@ -110,7 +110,8 @@ Risk monitoring rule:
   - `pgvector` in Postgres for semantic memory,
   - `Redis` for short-term context windows, caching, and rate limiting.
 - AI/model routing:
-  - primary conversational route with provider adapters (include `MiniMax` path for sponsor value),
+  - stateful conversation orchestration can run through `LangGraph` runtime with thread checkpoints,
+  - primary conversational route keeps provider adapters (include `MiniMax` path for sponsor value),
   - smaller safety/emotion model route for risk scoring and UI/prompt context.
 - Voice:
   - `ElevenLabs` for high-quality TTS path,
@@ -140,9 +141,16 @@ Reference docs:
   - keep rolling conversation context in Redis with TTL.
   - summarize older turns when token budget is tight.
 - Long-term memory:
-  - store durable user profile/preferences in Postgres.
-  - store semantic memory embeddings in Postgres (`pgvector`).
+  - keep durable user profile/preferences in Postgres as source of truth.
+  - use semantic retrieval over Postgres (`pgvector`) for fuzzy recall and extra materials.
+  - treat long-term memory as hybrid: structured profile memory plus retrieval memory.
 - Memory writes must be explicit and auditable; do not silently store sensitive raw content beyond what is needed.
+
+## 9.1) Stateful Orchestration Rule
+
+- Preserve a `thread_id` across turns so conversation state can resume deterministically.
+- If LangGraph service/runtime is enabled, use thread checkpoints for short-term conversational state.
+- Keep provider adapters independent from orchestration runtime so `MiniMax` remains swappable.
 
 ## 10) Recommendation Engine Rules
 
