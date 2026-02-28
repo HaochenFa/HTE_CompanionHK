@@ -19,7 +19,9 @@ class RoleChatRequest(BaseModel):
 
 
 class SafetyResult(BaseModel):
-    risk_level: Literal["low", "medium", "high"] = "low"
+    risk_level: Literal["low", "medium", "high"] = Field(
+        default="low", exclude=True,
+    )
     show_crisis_banner: bool = False
     emotion_label: str | None = None
     emotion_score: float | None = Field(default=None, ge=0.0, le=1.0)

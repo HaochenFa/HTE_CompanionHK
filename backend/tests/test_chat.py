@@ -23,7 +23,7 @@ def test_chat_endpoint_returns_mock_supportive_response() -> None:
     assert body["provider"] == "mock"
     assert body["runtime"] == "simple"
     assert body["thread_id"] == "test-user-companion-thread"
-    assert body["safety"]["risk_level"] in {"low", "medium"}
+    assert "risk_level" not in body["safety"]
     assert body["safety"]["show_crisis_banner"] is False
     assert body["safety"]["monitor_provider"] in {"rules", "minimax"}
     assert "here with you" in body["reply"].lower()
@@ -94,7 +94,7 @@ def test_chat_endpoint_high_risk_returns_supportive_refusal_and_banner(monkeypat
 
     assert response.status_code == 200
     body = response.json()
-    assert body["safety"]["risk_level"] == "high"
+    assert "risk_level" not in body["safety"]
     assert body["safety"]["show_crisis_banner"] is True
     assert body["safety"]["policy_action"] == "supportive_refusal"
     assert "cannot help with anything that could harm you" in body["reply"].lower()

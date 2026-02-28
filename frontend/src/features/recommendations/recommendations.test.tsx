@@ -18,6 +18,11 @@ vi.mock("@/components/weather-provider", () => ({
   useWeather: () => ({ condition: "unknown", isDay: true, temperatureC: null }),
   WeatherProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/chat/local_guide",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 describe("recommendation integration", () => {
   beforeEach(() => {
@@ -36,7 +41,6 @@ describe("recommendation integration", () => {
       provider: "mock",
       reply: "Here are practical options for your route.",
       safety: {
-        risk_level: "low",
         show_crisis_banner: false,
       },
     });

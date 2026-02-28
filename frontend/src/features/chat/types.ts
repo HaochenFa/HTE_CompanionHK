@@ -1,8 +1,6 @@
-export type RiskLevel = "low" | "medium" | "high";
 export type Role = "companion" | "local_guide" | "study_guide";
 
 export interface SafetyMetadata {
-  risk_level: RiskLevel;
   show_crisis_banner: boolean;
   emotion_label?: string | null;
   emotion_score?: number | null;

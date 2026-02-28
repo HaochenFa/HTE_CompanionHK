@@ -401,7 +401,6 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
   const messagesByRoleRef = useRef(messagesByRole);
 
   const activeMessages = messagesByRole[activeRole];
-  const activeSafety = safetyByRole[activeRole];
   const localGuideTurnSummaries: LocalGuideTurnSummary[] = (() => {
     const summaries: LocalGuideTurnSummary[] = [];
     let lastUserMessage = "";
@@ -888,12 +887,6 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
             {meta.description}
           </motion.p>
         </AnimatePresence>
-        {activeSafety && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Safety: {activeSafety.risk_level}
-            {activeSafety.emotion_label ? ` · Emotion: ${activeSafety.emotion_label}` : ""}
-          </p>
-        )}
       </div>
 
       {/* ─── Safety Banner ─── */}
