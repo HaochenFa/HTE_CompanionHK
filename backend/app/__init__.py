@@ -1,0 +1,1 @@
+"""CompanionHK backend application package."""
