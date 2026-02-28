@@ -76,6 +76,6 @@ class MemoryEmbedding(Base, TimestampMixin):
     embedding_dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
     distance_metric: Mapped[str] = mapped_column(
         String(24), nullable=False, default="cosine")
-    embedding: Mapped[list[float]] = mapped_column(Vector(), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
 
     memory_entry = relationship("MemoryEntry", back_populates="embeddings")

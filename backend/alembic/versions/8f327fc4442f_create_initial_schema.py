@@ -285,7 +285,7 @@ def upgrade() -> None:
         sa.Column("embedding_dimensions", sa.Integer(), nullable=False),
         sa.Column("distance_metric", sa.String(length=24),
                   nullable=False, server_default=sa.text("'cosine'")),
-        sa.Column("embedding", Vector(), nullable=False),
+        sa.Column("embedding", Vector(1536), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True),
                   nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True),

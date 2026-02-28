@@ -193,41 +193,41 @@
 [data-weather="fog"] {
   color-scheme: light;
 
-  --background: #f5f0eb;
-  --foreground: #3d3636;
+  --background: #f9f4ee;
+  --foreground: #4a3e36;
 
-  --card: #fffdf9;
-  --card-foreground: #3d3636;
+  --card: #fffbf7;
+  --card-foreground: #4a3e36;
 
-  --popover: #fffdf9;
-  --popover-foreground: #3d3636;
+  --popover: #fffbf7;
+  --popover-foreground: #4a3e36;
 
-  --primary: #a0887e;
+  --primary: #b78b73;
   --primary-foreground: #ffffff;
 
-  --secondary: #ede8e2;
-  --secondary-foreground: #5a4e48;
+  --secondary: #f1e8dd;
+  --secondary-foreground: #6a5649;
 
-  --muted: #e8e2db;
-  --muted-foreground: #8a7e78;
+  --muted: #efe6dc;
+  --muted-foreground: #8e796b;
 
-  --accent: #b898a5;
-  --accent-foreground: #3d2830;
+  --accent: #c49b8d;
+  --accent-foreground: #4a2f24;
 
   --destructive: #e85d5d;
   --destructive-foreground: #ffffff;
 
-  --border: #e0d8d0;
-  --input: #e0d8d0;
-  --ring: #a0887e;
+  --border: #e9ddd2;
+  --input: #e9ddd2;
+  --ring: #b78b73;
 
-  --role-companion: #d4a090;
+  --role-companion: #d59b82;
   --role-local-guide: #6b9f78;
-  --role-study-guide: #8898c8;
+  --role-study-guide: #8c9fcd;
 
-  --safety-bg: #f5ede0;
-  --safety-border: #c8a878;
-  --safety-text: #5a4a38;
+  --safety-bg: #f7ecde;
+  --safety-border: #c8a275;
+  --safety-text: #6a5440;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -452,6 +452,50 @@ nav,
 
 .animate-page-enter {
   animation: page-enter 0.3s ease-out both;
+}
+
+/* Markdown rendering inside assistant bubbles */
+.chat-markdown p {
+  margin: 0;
+}
+
+.chat-markdown p + p {
+  margin-top: 0.5rem;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0.45rem 0 0.25rem;
+  padding-left: 1.1rem;
+}
+
+.chat-markdown li + li {
+  margin-top: 0.2rem;
+}
+
+.chat-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-markdown code {
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--muted) 80%, transparent);
+  padding: 0.08rem 0.32rem;
+  font-size: 0.85em;
+}
+
+.chat-markdown pre {
+  overflow-x: auto;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  padding: 0.6rem 0.75rem;
+}
+
+.chat-markdown pre code {
+  background: transparent;
+  padding: 0;
 }
 
 /* ──────────────────────────────────────────────────────────

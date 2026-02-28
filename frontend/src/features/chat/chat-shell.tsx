@@ -11,10 +11,15 @@ import {
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Heart, MapPin, BookOpen, Send, ChevronDown, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SafetyBanner } from "@/components/safety-banner";
 import { WeatherIsland } from "@/components/weather-island";
+import { parseAssistantMessage } from "@/features/chat/assistant-message-parser";
 import { MapCanvas } from "@/features/recommendations/map-canvas";
 import { RecommendationList } from "@/features/recommendations/recommendation-list";
 import type { RecommendationResponse } from "@/features/recommendations/types";
@@ -181,6 +186,9 @@ interface ChatBubbleProps {
 function ChatBubble({ msg, activeRole, showRoleIcon }: ChatBubbleProps) {
   const isUser = msg.role === "user";
   const RoleIcon = ROLE_META[activeRole].icon;
+  const [isThinkingOpen, setIsThinkingOpen] = useState(false);
+  const parsedAssistantMessage = isUser ? null : parseAssistantMessage(msg.text);
+  const hasThinking = Boolean(parsedAssistantMessage?.thinking);
 
   return (
     <motion.div
@@ -214,7 +222,41 @@ function ChatBubble({ msg, activeRole, showRoleIcon }: ChatBubbleProps) {
             )}
             style={!isUser ? { borderLeftColor: roleColor(activeRole) } : undefined}
           >
-            {msg.text}
+            {isUser ? (
+              <p className="whitespace-pre-wrap">{msg.text}</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="chat-markdown">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeSanitize]}
+                  >
+                    {parsedAssistantMessage?.finalAnswer ?? msg.text}
+                  </ReactMarkdown>
+                </div>
+                {hasThinking && (
+                  <Collapsible open={isThinkingOpen} onOpenChange={setIsThinkingOpen}>
+                    <CollapsibleTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/50 px-2 py-1 text-[0.72rem] font-medium text-muted-foreground transition-colors hover:bg-muted"
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "size-3 transition-transform duration-200",
+                            isThinkingOpen && "rotate-180",
+                          )}
+                        />
+                        Reasoning
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-1 rounded-md border border-border/70 bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+                      {parsedAssistantMessage?.thinking}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </div>
+            )}
           </div>
           <span
             className={cn(
