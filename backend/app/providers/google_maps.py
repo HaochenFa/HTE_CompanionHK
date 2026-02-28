@@ -171,7 +171,8 @@ class GoogleMapsProvider(MapsProvider):
                     "types": list(item.get("types") or []),
                     "latitude": item_latitude,
                     "longitude": item_longitude,
-                    "photo_url": self._build_photo_url(photo_reference),
+                    # Do not return signed photo URLs that expose server API keys.
+                    "photo_url": None,
                     "maps_uri": (
                         f"https://www.google.com/maps/place/?q=place_id:{place_id}"
                         if place_id

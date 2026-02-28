@@ -117,6 +117,7 @@ class SafetyMonitorService:
             "You are a safety and emotion classifier for a supportive chat app. "
             "Return only strict JSON with keys: risk_level, emotion_label, emotion_score, "
             "policy_action, rationale.\n"
+            "Do not include markdown fences, explanations, or <think> blocks.\n"
             "risk_level must be one of: low, medium, high.\n"
             "policy_action must be one of: allow, supportive_refusal, escalate_banner.\n"
             "emotion_score must be 0..1.\n"
@@ -227,12 +228,39 @@ class SafetyMonitorService:
 
     @staticmethod
     def _parse_json_object(raw: str) -> dict[str, Any]:
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        json_str = match.group(0) if match else raw
-        parsed = json.loads(json_str)
-        if not isinstance(parsed, dict):
-            raise ValueError("safety_model_response_not_object")
-        return parsed
+        cleaned = SafetyMonitorService._normalize_model_output(raw)
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(cleaned):
+            if char != "{":
+                continue
+            try:
+                candidate, _ = decoder.raw_decode(cleaned[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(candidate, dict):
+                return candidate
+
+        raise ValueError("safety_model_response_not_object")
+
+    @staticmethod
+    def _normalize_model_output(raw: str) -> str:
+        without_think = re.sub(
+            r"<think>[\s\S]*?</think>",
+            "",
+            raw,
+            flags=re.IGNORECASE,
+        ).strip()
+        fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", without_think, re.IGNORECASE)
+        if fenced:
+            return fenced.group(1).strip()
+        return without_think
 
     @staticmethod
     def _should_show_banner(*, risk_level: str, policy_action: str) -> bool:

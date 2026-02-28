@@ -72,6 +72,14 @@ export function WeatherBackground() {
   const animFrameRef = useRef<number>(0);
 
   const condition = weather.condition;
+  const topOverlayClass =
+    condition === "thunderstorm"
+      ? "from-slate-700/35 via-slate-600/10 to-transparent"
+      : condition === "rain" || condition === "drizzle"
+        ? "from-slate-600/25 via-slate-500/10 to-transparent"
+        : condition === "cloudy" || condition === "partly_cloudy" || condition === "fog"
+          ? "from-amber-900/12 via-amber-900/4 to-transparent"
+          : "from-amber-400/8 via-transparent to-transparent";
 
   const particles = useMemo(() => {
     switch (condition) {
@@ -233,10 +241,16 @@ export function WeatherBackground() {
   }, [condition, particles]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none fixed inset-0 z-0"
-      aria-hidden="true"
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="pointer-events-none fixed inset-0 z-0"
+        aria-hidden="true"
+      />
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none fixed inset-x-0 top-0 z-0 h-56 bg-gradient-to-b ${topOverlayClass}`}
+      />
+    </>
   );
 }

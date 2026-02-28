@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes import safety as safety_route
@@ -77,3 +78,22 @@ def test_safety_monitor_falls_back_to_rules_when_minimax_fails(monkeypatch) -> N
     assert result.monitor_provider == "rules"
     assert result.degraded is True
     assert result.fallback_reason == "minimax_unavailable_or_invalid_response"
+
+
+def test_safety_monitor_parse_json_object_handles_think_and_fenced_json() -> None:
+    raw = (
+        "<think>\n"
+        "internal notes\n"
+        "</think>\n"
+        "```json\n"
+        "{\"risk_level\":\"low\",\"policy_action\":\"allow\"}\n"
+        "```"
+    )
+    parsed = SafetyMonitorService._parse_json_object(raw)
+    assert parsed["risk_level"] == "low"
+    assert parsed["policy_action"] == "allow"
+
+
+def test_safety_monitor_parse_json_object_raises_for_non_json() -> None:
+    with pytest.raises(ValueError):
+        SafetyMonitorService._parse_json_object("<think>no json at all</think>")
