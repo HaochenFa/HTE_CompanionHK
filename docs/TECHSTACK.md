@@ -50,12 +50,19 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
   - short-term context windows with TTL (role-space scoped),
   - temporary state,
   - rate-limit counters.
+- Migration toolchain:
+  - `SQLAlchemy 2.x` models + `Alembic` revision workflow.
+- Schema reference:
+  - `docs/architecture/database-schema.md`
 
 Memory strategy:
 
 - Hybrid long-term memory:
   - structured profile memory in Postgres (facts/preferences),
   - retrieval memory via pgvector for fuzzy recall and extra materials.
+- Recommendation privacy:
+  - store coarse user location metadata only (no precise user current lat/lng by default),
+  - store precise recommended-place coordinates for map rendering and routing UX.
 
 ## AI and Safety Layer
 
@@ -81,6 +88,12 @@ Memory strategy:
 - Weather source: `Open-Meteo` default.
 - Context inputs: emotion state + user preferences + location/weather.
 - Optional freshness boost: `Exa` retrieval.
+
+Integration references:
+
+- `docs/integrations/open-meteo.md`
+- `docs/integrations/google-maps.md`
+- `docs/architecture/recommendation-contract.md`
 
 ## Infrastructure Layer (AWS-First)
 
