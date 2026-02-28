@@ -80,6 +80,7 @@ class LangGraphConversationRuntime(ConversationRuntime):
         system_prompt: str,
         history: list[dict[str, str]],
         user_message: str,
+        context: dict[str, Any] | None = None,
     ) -> list[Any]:
         if not LANGGRAPH_AVAILABLE:
             raise RuntimeError(
@@ -97,7 +98,24 @@ class LangGraphConversationRuntime(ConversationRuntime):
                 messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 messages.append(AIMessage(content=content))
-        messages.append(HumanMessage(content=user_message))
+
+        ctx = context or {}
+        attachment = ctx.get("attachment")
+        base64_data = ctx.get("attachment_base64", "")
+        if (
+            attachment
+            and isinstance(attachment, dict)
+            and attachment.get("has_base64")
+            and base64_data
+        ):
+            mime_type = attachment.get("mime_type", "image/jpeg")
+            messages.append(HumanMessage(content=[
+                {"type": "text", "text": user_message},
+                {"type": "image_url", "image_url": {
+                    "url": f"data:{mime_type};base64,{base64_data}"}},
+            ]))
+        else:
+            messages.append(HumanMessage(content=user_message))
         return messages
 
     def _get_or_build_graph(self, provider: ChatProvider) -> Any:
@@ -120,6 +138,7 @@ class LangGraphConversationRuntime(ConversationRuntime):
                 system_prompt=system_prompt,
                 history=history,
                 user_message=incoming,
+                context=ctx,
             )
 
             ctx["langchain_messages"] = lc_messages

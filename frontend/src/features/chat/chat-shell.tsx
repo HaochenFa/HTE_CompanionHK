@@ -56,6 +56,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+  attachmentPreviewUrl?: string;
 };
 
 type LocalGuideTurnSummary = {
@@ -283,7 +284,16 @@ function ChatBubble({ msg, activeRole, showRoleIcon, ttsProvider }: ChatBubblePr
             style={!isUser ? { borderLeftColor: roleColor(activeRole) } : undefined}
           >
             {isUser ? (
-              <p className="whitespace-pre-wrap">{msg.text}</p>
+              <div className="flex flex-col gap-2">
+                {msg.attachmentPreviewUrl && (
+                  <img
+                    src={msg.attachmentPreviewUrl}
+                    alt="Attached"
+                    className="max-w-[200px] max-h-[200px] rounded-lg object-cover"
+                  />
+                )}
+                {msg.text !== "(image)" && <p className="whitespace-pre-wrap">{msg.text}</p>}
+              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 <div className="chat-markdown">
@@ -834,6 +844,7 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
     const roleAtSend = activeRole;
     const threadId = threadIdRef.current[roleAtSend];
     const attachment = pendingAttachment;
+    const previewUrl = attachmentPreviewUrl;
     setError(null);
     setInput("");
     clearAttachment();
@@ -842,6 +853,7 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
       role: "user",
       text: trimmed || "(image)",
       timestamp: Date.now(),
+      attachmentPreviewUrl: previewUrl ?? undefined,
     };
     setMessagesByRole((prev) => ({ ...prev, [roleAtSend]: [...prev[roleAtSend], userMsg] }));
     setIsSubmitting(true);
