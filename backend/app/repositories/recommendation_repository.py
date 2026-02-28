@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 
@@ -96,3 +96,20 @@ class RecommendationRepository:
             .options(selectinload(RecommendationRequest.items))
         )
         return list(self._session.scalars(stmt))
+
+    def delete_by_request_ids(
+        self,
+        *,
+        user_id: str,
+        role: RoleType,
+        request_ids: list[str],
+    ) -> int:
+        if not request_ids:
+            return 0
+        stmt = sa_delete(RecommendationRequest).where(
+            RecommendationRequest.user_id == user_id,
+            RecommendationRequest.role == role,
+            RecommendationRequest.request_id.in_(request_ids),
+        )
+        result = self._session.execute(stmt)
+        return result.rowcount  # type: ignore[return-value]

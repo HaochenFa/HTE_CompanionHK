@@ -33,8 +33,10 @@ from app.schemas.chat import (
     ChatResponse,
     ChatRole,
     ChatTurn,
+    ClearHistoryResponse,
     SafetyResult,
 )
+from app.repositories.recommendation_repository import RecommendationRepository
 from app.schemas.safety import SafetyEvaluateRequest
 from app.services.safety_monitor_service import SafetyMonitorService
 
@@ -297,6 +299,13 @@ class ChatOrchestrator:
             role=role,
             message=chat_request.message
         )
+        if chat_request.attachment is not None:
+            context["attachment"] = {
+                "mime_type": chat_request.attachment.mime_type,
+                "filename": chat_request.attachment.filename,
+                "size_bytes": chat_request.attachment.size_bytes,
+                "has_base64": True,
+            }
 
         logger.info(
             "chat_orchestrated request_id=%s role=%s thread_id=%s runtime=%s provider_route=%s fallback_reason=%s user_id=%s",
@@ -328,6 +337,8 @@ class ChatOrchestrator:
             fallback_reason=safety_result.fallback_reason,
         )
         runtime_context = dict(context)
+        if chat_request.attachment is not None:
+            runtime_context["attachment_base64"] = chat_request.attachment.base64_data
         runtime_context["safety"] = safety.model_dump()
 
         if safety.policy_action == "supportive_refusal":
@@ -438,4 +449,81 @@ class ChatOrchestrator:
             role=role,
             thread_id=resolved_thread_id,
             turns=turns,
+        )
+
+    def clear_history(
+        self,
+        *,
+        user_id: str,
+        role: ChatRole,
+        thread_id: str | None = None,
+    ) -> ClearHistoryResponse:
+        resolved_thread_id = thread_id or f"{user_id}-{role}-thread"
+        role_enum = RoleType(role)
+        new_thread_id = f"{user_id}-{role}-thread-{uuid4().hex[:8]}"
+
+        cleared_message_count = 0
+        cleared_memory_count = 0
+        cleared_recommendation_count = 0
+
+        with SessionLocal() as session:
+            chat_repo = ChatRepository(session)
+            memory_repo = MemoryRepository(session)
+            recommendation_repo = RecommendationRepository(session)
+
+            messages = chat_repo.list_recent_messages(
+                user_id=user_id,
+                role=role_enum,
+                thread_id=resolved_thread_id,
+                limit=10000,
+            )
+            request_ids = [m.request_id for m in messages]
+
+            cleared_message_count = chat_repo.delete_thread_messages(
+                user_id=user_id,
+                role=role_enum,
+                thread_id=resolved_thread_id,
+            )
+            cleared_memory_count = memory_repo.delete_by_thread(
+                user_id=user_id,
+                role=role_enum,
+                thread_id=resolved_thread_id,
+            )
+            if request_ids:
+                cleared_recommendation_count = recommendation_repo.delete_by_request_ids(
+                    user_id=user_id,
+                    role=role_enum,
+                    request_ids=request_ids,
+                )
+
+            session.commit()
+
+        try:
+            redis_client = get_redis_client()
+            redis_key = build_short_term_memory_key(
+                user_id=user_id,
+                role=cast(ChatRole, role),
+                thread_id=resolved_thread_id,
+            )
+            redis_client.delete(redis_key)
+        except Exception:
+            logger.exception(
+                "clear_history_redis_cleanup_failed user_id=%s role=%s thread_id=%s",
+                user_id, role, resolved_thread_id,
+            )
+
+        logger.info(
+            "clear_history_completed user_id=%s role=%s thread_id=%s new_thread_id=%s msgs=%d mem=%d rec=%d",
+            user_id, role, resolved_thread_id, new_thread_id,
+            cleared_message_count, cleared_memory_count, cleared_recommendation_count,
+        )
+
+        return ClearHistoryResponse(
+            user_id=user_id,
+            role=role,
+            cleared_thread_id=resolved_thread_id,
+            new_thread_id=new_thread_id,
+            cleared_message_count=cleared_message_count,
+            cleared_memory_count=cleared_memory_count,
+            cleared_recommendation_count=cleared_recommendation_count,
         )

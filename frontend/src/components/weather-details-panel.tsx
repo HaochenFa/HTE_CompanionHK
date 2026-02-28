@@ -94,7 +94,7 @@ export function WeatherDetailsPanel() {
     ...row,
     value:
       row.label === "Feels Like" && weather.temperatureC != null
-        ? `${Math.round(weather.temperatureC)}degC`
+        ? `${Math.round(weather.temperatureC)}°C`
         : row.value,
   }));
 
@@ -135,7 +135,7 @@ export function WeatherDetailsPanel() {
           >
             {temp}
           </motion.span>
-          <span className="mb-1 text-2xl font-light text-muted-foreground">degC</span>
+          <span className="mb-1 text-2xl font-light text-muted-foreground">°C</span>
         </div>
 
         <div className="mb-3 flex items-center gap-2">

@@ -9,7 +9,19 @@ import {
   type KeyboardEvent,
 } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Heart, MapPin, BookOpen, Send, ChevronDown, ArrowLeft } from "lucide-react";
+import {
+  Heart,
+  MapPin,
+  BookOpen,
+  Send,
+  ChevronDown,
+  ArrowLeft,
+  Trash2,
+  Volume2,
+  Loader2,
+  ImagePlus,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
@@ -24,9 +36,10 @@ import { roleToSlug } from "@/features/chat/role-routing";
 import { MapCanvas } from "@/features/recommendations/map-canvas";
 import { RecommendationList } from "@/features/recommendations/recommendation-list";
 import type { RecommendationResponse } from "@/features/recommendations/types";
-import type { ChatResponse, Role } from "@/features/chat/types";
-import { getChatHistory, postChatMessage } from "@/lib/api/chat";
+import type { ChatResponse, ImageAttachment, Role, TTSProvider } from "@/features/chat/types";
+import { clearChatHistory, getChatHistory, postChatMessage } from "@/lib/api/chat";
 import { postRecommendationHistory, postRecommendations } from "@/lib/api/recommendations";
+import { postTTS } from "@/lib/api/voice";
 import {
   spring,
   springGentle,
@@ -81,6 +94,8 @@ const ROLE_META: Record<
 const HONG_KONG_FALLBACK = { latitude: 22.3193, longitude: 114.1694 };
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const MAX_TEXTAREA_HEIGHT = 120;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
 type Coordinates = { latitude: number; longitude: number };
 
@@ -203,14 +218,37 @@ interface ChatBubbleProps {
   msg: ChatMessage;
   activeRole: Role;
   showRoleIcon: boolean;
+  ttsProvider: TTSProvider;
 }
 
-function ChatBubble({ msg, activeRole, showRoleIcon }: ChatBubbleProps) {
+function ChatBubble({ msg, activeRole, showRoleIcon, ttsProvider }: ChatBubbleProps) {
   const isUser = msg.role === "user";
   const RoleIcon = ROLE_META[activeRole].icon;
   const [isThinkingOpen, setIsThinkingOpen] = useState(false);
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const [ttsError, setTtsError] = useState<string | null>(null);
   const parsedAssistantMessage = isUser ? null : parseAssistantMessage(msg.text);
   const hasThinking = Boolean(parsedAssistantMessage?.thinking);
+
+  const handleTTS = async () => {
+    const textToSpeak = parsedAssistantMessage?.finalAnswer ?? msg.text;
+    if (!textToSpeak || ttsLoading) return;
+    setTtsError(null);
+    setTtsLoading(true);
+    try {
+      const res = await postTTS({ text: textToSpeak, preferred_provider: ttsProvider });
+      if (!res.audio_base64) {
+        setTtsError(res.degraded ? "Voice unavailable right now." : "No audio returned.");
+        return;
+      }
+      const audio = new Audio(`data:${res.mime_type};base64,${res.audio_base64}`);
+      await audio.play();
+    } catch {
+      setTtsError("Unable to play audio.");
+    } finally {
+      setTtsLoading(false);
+    }
+  };
 
   return (
     <motion.div
@@ -249,10 +287,7 @@ function ChatBubble({ msg, activeRole, showRoleIcon }: ChatBubbleProps) {
             ) : (
               <div className="flex flex-col gap-2">
                 <div className="chat-markdown">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeSanitize]}
-                  >
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
                     {parsedAssistantMessage?.finalAnswer ?? msg.text}
                   </ReactMarkdown>
                 </div>
@@ -277,6 +312,23 @@ function ChatBubble({ msg, activeRole, showRoleIcon }: ChatBubbleProps) {
                     </CollapsibleContent>
                   </Collapsible>
                 )}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void handleTTS()}
+                    disabled={ttsLoading}
+                    className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/50 px-2 py-1 text-[0.72rem] font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50 cursor-pointer"
+                    aria-label="Read aloud"
+                  >
+                    {ttsLoading ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Volume2 className="size-3" />
+                    )}
+                    {ttsLoading ? "Speaking..." : "Listen"}
+                  </button>
+                  {ttsError && <span className="text-[0.65rem] text-destructive">{ttsError}</span>}
+                </div>
               </div>
             )}
           </div>
@@ -380,8 +432,9 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
     useState<Record<Role, boolean>>(buildInitialBannerMap());
   const [safetyByRole, setSafetyByRole] =
     useState<Record<Role, ChatResponse["safety"] | null>>(buildInitialSafetyMap());
-  const [isHistoryLoadingByRole, setIsHistoryLoadingByRole] =
-    useState<Record<Role, boolean>>(buildInitialRoleFlagMap(false));
+  const [isHistoryLoadingByRole, setIsHistoryLoadingByRole] = useState<Record<Role, boolean>>(
+    buildInitialRoleFlagMap(false),
+  );
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [recommendationsByAssistantRequestId, setRecommendationsByAssistantRequestId] = useState<
     Record<string, RecommendationResponse>
@@ -394,6 +447,12 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
     string | null
   >(null);
   const [showScrollFAB, setShowScrollFAB] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [ttsProvider, setTtsProvider] = useState<TTSProvider>("auto");
+  const [pendingAttachment, setPendingAttachment] = useState<ImageAttachment | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -419,22 +478,24 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
     }
     return summaries;
   })();
-  const localGuideAssistantRequestIds = localGuideTurnSummaries.map((turn) => turn.assistantRequestId);
+  const localGuideAssistantRequestIds = localGuideTurnSummaries.map(
+    (turn) => turn.assistantRequestId,
+  );
   const resolvedSelectedRecommendationRequestId = (() => {
     if (activeRole !== "local_guide") return null;
     if (selectedRecommendationRequestId) return selectedRecommendationRequestId;
     return localGuideAssistantRequestIds.at(-1) ?? null;
   })();
   const selectedTurnSummary = resolvedSelectedRecommendationRequestId
-    ? localGuideTurnSummaries.find(
+    ? (localGuideTurnSummaries.find(
         (turn) => turn.assistantRequestId === resolvedSelectedRecommendationRequestId,
-      ) ?? null
+      ) ?? null)
     : null;
   const selectedRecommendationResponse = resolvedSelectedRecommendationRequestId
-    ? recommendationsByAssistantRequestId[resolvedSelectedRecommendationRequestId] ?? null
+    ? (recommendationsByAssistantRequestId[resolvedSelectedRecommendationRequestId] ?? null)
     : null;
   const selectedRecommendationError = resolvedSelectedRecommendationRequestId
-    ? recommendationErrorByAssistantRequestId[resolvedSelectedRecommendationRequestId] ?? null
+    ? (recommendationErrorByAssistantRequestId[resolvedSelectedRecommendationRequestId] ?? null)
     : null;
   const isSelectedRecommendationLoading = resolvedSelectedRecommendationRequestId
     ? Boolean(recommendationLoadingByAssistantRequestId[resolvedSelectedRecommendationRequestId])
@@ -705,18 +766,81 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const handleClearHistory = useCallback(async () => {
+    setIsClearingHistory(true);
+    setError(null);
+    try {
+      const res = await clearChatHistory({
+        user_id: userId,
+        role: activeRole,
+        thread_id: threadIdRef.current[activeRole],
+      });
+      threadIdRef.current[activeRole] = res.new_thread_id;
+      setMessagesByRole((prev) => ({ ...prev, [activeRole]: [] }));
+      setSafetyByRole((prev) => ({ ...prev, [activeRole]: null }));
+      setShowCrisisBannerByRole((prev) => ({ ...prev, [activeRole]: false }));
+      historyLoadedRef.current[activeRole] = false;
+      if (activeRole === "local_guide") {
+        setRecommendationsByAssistantRequestId({});
+        setRecommendationErrorByAssistantRequestId({});
+        setRecommendationLoadingByAssistantRequestId({});
+        setSelectedRecommendationRequestId(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clear history.");
+    } finally {
+      setIsClearingHistory(false);
+      setShowClearConfirm(false);
+    }
+  }, [activeRole, userId]);
+
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      setError("Only JPEG, PNG, and WebP images are supported.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setError("Image must be smaller than 5 MB.");
+      return;
+    }
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1];
+      setPendingAttachment({
+        mime_type: file.type as ImageAttachment["mime_type"],
+        base64_data: base64,
+        filename: file.name,
+        size_bytes: file.size,
+      });
+      setAttachmentPreviewUrl(result);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }, []);
+
+  const clearAttachment = useCallback(() => {
+    setPendingAttachment(null);
+    setAttachmentPreviewUrl(null);
+  }, []);
+
   const handleSend = async () => {
     const trimmed = input.trim();
-    if (!trimmed || isSubmitting) return;
+    if ((!trimmed && !pendingAttachment) || isSubmitting) return;
 
     const roleAtSend = activeRole;
     const threadId = threadIdRef.current[roleAtSend];
+    const attachment = pendingAttachment;
     setError(null);
     setInput("");
+    clearAttachment();
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
-      text: trimmed,
+      text: trimmed || "(image)",
       timestamp: Date.now(),
     };
     setMessagesByRole((prev) => ({ ...prev, [roleAtSend]: [...prev[roleAtSend], userMsg] }));
@@ -727,7 +851,8 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
         user_id: userId,
         role: roleAtSend,
         thread_id: threadId,
-        message: trimmed,
+        message: trimmed || "Please analyze this image.",
+        attachment: attachment ?? undefined,
       });
       const assistantMsg: ChatMessage = {
         id: res.request_id,
@@ -821,7 +946,29 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
             港伴<span className="text-primary">AI</span>
           </span>
         </div>
-        <WeatherIsland />
+        <div className="flex items-center gap-2">
+          <select
+            value={ttsProvider}
+            onChange={(e) => setTtsProvider(e.target.value as TTSProvider)}
+            className="rounded-lg border border-border/50 bg-card px-2 py-1 text-xs text-muted-foreground"
+            aria-label="Voice provider"
+          >
+            <option value="auto">Voice: Auto</option>
+            <option value="cantoneseai">Cantonese.ai</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+          <WeatherIsland />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setShowClearConfirm(true)}
+            disabled={activeMessages.length === 0}
+            className="rounded-lg text-muted-foreground"
+            aria-label={`Clear ${meta.label} history`}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
         <div
           className="absolute inset-x-0 bottom-0 h-px"
           style={{
@@ -830,6 +977,59 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
           }}
         />
       </motion.header>
+
+      {/* ─── Clear History Confirmation ─── */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={() => !isClearingHistory && setShowClearConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={springGentle}
+              onClick={(e) => e.stopPropagation()}
+              className="mx-4 w-full max-w-sm rounded-2xl border border-border/60 bg-card p-6 shadow-(--shadow-warm-lg)"
+            >
+              <h3 className="mb-2 text-lg font-bold font-heading text-foreground">
+                Clear {meta.label} History?
+              </h3>
+              <p className="mb-5 text-sm text-muted-foreground leading-relaxed">
+                This will permanently remove all messages, memories, and recommendations for your{" "}
+                <span className="font-semibold">{meta.label}</span> conversations. Other roles are
+                not affected.
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1 rounded-xl"
+                  onClick={() => setShowClearConfirm(false)}
+                  disabled={isClearingHistory}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1 rounded-xl"
+                  onClick={() => void handleClearHistory()}
+                  disabled={isClearingHistory}
+                >
+                  {isClearingHistory ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Clear History"
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ─── Role Selector ─── */}
       <nav className="relative flex justify-center gap-2 px-4 pb-2 pt-1" aria-label="Role spaces">
@@ -958,6 +1158,7 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
                         msg={msg}
                         activeRole={activeRole}
                         showRoleIcon={showRoleIcon}
+                        ttsProvider={ttsProvider}
                       />
                     );
                   })}
@@ -1010,11 +1211,13 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
                   {localGuideTurnSummaries.map((turn) => {
                     const isSelected =
                       turn.assistantRequestId === resolvedSelectedRecommendationRequestId;
-                    const linkedResponse = recommendationsByAssistantRequestId[turn.assistantRequestId];
+                    const linkedResponse =
+                      recommendationsByAssistantRequestId[turn.assistantRequestId];
                     const isLoading = Boolean(
                       recommendationLoadingByAssistantRequestId[turn.assistantRequestId],
                     );
-                    const turnError = recommendationErrorByAssistantRequestId[turn.assistantRequestId];
+                    const turnError =
+                      recommendationErrorByAssistantRequestId[turn.assistantRequestId];
                     const statusLabel = isLoading
                       ? "Loading"
                       : linkedResponse
@@ -1107,7 +1310,8 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
                     )}
                     {selectedTurnSummary?.userQuery && (
                       <p className="text-xs text-muted-foreground">
-                        Based on: <span className="font-medium">{selectedTurnSummary.userQuery}</span>
+                        Based on:{" "}
+                        <span className="font-medium">{selectedTurnSummary.userQuery}</span>
                       </p>
                     )}
                   </div>
@@ -1131,7 +1335,52 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
         transition={{ delay: 0.15, ...springGentle }}
         className="sticky bottom-0 border-t border-border/60 bg-background/80 glass glass-border"
       >
+        {/* Image preview */}
+        <AnimatePresence>
+          {attachmentPreviewUrl && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mx-auto max-w-2xl overflow-hidden px-4 pt-2 md:px-6"
+            >
+              <div className="relative inline-block">
+                <img
+                  src={attachmentPreviewUrl}
+                  alt="Upload preview"
+                  className="h-20 rounded-lg border border-border/60 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={clearAttachment}
+                  className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-white shadow-sm cursor-pointer"
+                  aria-label="Remove image"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="mx-auto flex max-w-2xl items-end gap-2 px-4 py-3 md:px-6">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleImageSelect}
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isSubmitting || pendingAttachment !== null}
+            className="rounded-lg text-muted-foreground shrink-0"
+            aria-label="Attach image"
+          >
+            <ImagePlus className="size-4" />
+          </Button>
           <AutoGrowTextarea
             textareaRef={textareaRef}
             placeholder={meta.empty}
@@ -1145,7 +1394,7 @@ export function ChatShell({ initialRole = "companion", userId = "demo-user" }: C
               size="icon"
               className="rounded-xl shadow-(--shadow-warm-sm) transition-all duration-200 hover:shadow-(--shadow-warm-md)"
               onClick={() => void handleSend()}
-              disabled={isSubmitting || input.trim().length === 0}
+              disabled={isSubmitting || (input.trim().length === 0 && !pendingAttachment)}
               style={{ backgroundColor: roleColor(activeRole) }}
             >
               <Send className="size-4 text-white" />

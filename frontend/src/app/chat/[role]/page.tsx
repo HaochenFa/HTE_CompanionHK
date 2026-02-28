@@ -11,7 +11,7 @@ export default function ChatPage({ params }: { params: Promise<{ role: string }>
   const { user, isLoading } = useAuth();
   const initialRole = slugToRole(role);
 
-  if (!isLoading && !user) redirect("/login");
+  if (!isLoading && !user) redirect("/welcome");
   if (!initialRole) redirect("/");
 
   if (isLoading) {
