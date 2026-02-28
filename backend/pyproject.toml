@@ -13,6 +13,7 @@ dependencies = [
   "pydantic-settings",
   "psycopg[binary]",
   "redis",
+  "requests",
   "uvicorn[standard]",
 ]
 

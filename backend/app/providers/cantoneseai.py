@@ -64,12 +64,13 @@ class CantoneseAIVoiceProvider(VoiceProvider):
         Initialize Cantonese.ai provider.
 
         Raises:
-            ValueError: If CANTONESE_AI_API_KEY environment variable is not set.
+            ValueError: If CANTONESEAI_API_KEY environment variable is not set.
         """
-        self.api_key = os.getenv("CANTONESE_AI_API_KEY")
+        # Backward-compatible fallback keeps previous key name working.
+        self.api_key = os.getenv("CANTONESEAI_API_KEY") or os.getenv("CANTONESE_AI_API_KEY")
         if not self.api_key:
             raise ValueError(
-                "CANTONESE_AI_API_KEY environment variable not set. "
+                "CANTONESEAI_API_KEY environment variable not set. "
                 "Register at https://cantonese.ai/ and set your API key."
             )
 
@@ -90,9 +91,9 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             output_format: str = "wav",
             frame_rate: str = "24000",
             should_return_timestamp: bool = False
-    ) -> Union[bytes, Dict[str, Any]]:
+    ) -> bytes:
         """
-        Convert Cantonese text to speech (TTS) with optional timestamp data.
+        Convert Cantonese text to speech (TTS).
 
         Args:
             text (str): Cantonese text to synthesize (1-5000 characters).
@@ -101,20 +102,12 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                                   Defaults to "default".
             output_format (str): Audio output format. Options: "wav", "mp3". Default: "wav".
             frame_rate (str): Audio frame rate. Options: "16000", "24000", "48000". Default: "24000".
-            should_return_timestamp (bool): If True, returns JSON with timestamps and base64 audio.
-                                           If False, returns raw audio bytes.
+            should_return_timestamp (bool): If True, requests timestamp metadata from API
+                                           and extracts audio bytes from the JSON response.
                                            Default: False.
 
         Returns:
-            If should_return_timestamp=False:
-                bytes: Raw audio content (WAV or MP3).
-
-            If should_return_timestamp=True:
-                Dict with keys:
-                    - "file": Base64-encoded audio data
-                    - "request_id": Unique request identifier
-                    - "srt_timestamp": SRT subtitle format with timings
-                    - "timestamps": Array of {start, end, text} for each phrase
+            bytes: Raw audio content (WAV or MP3).
 
         Raises:
             ValueError: If text is empty, too long, or invalid.
@@ -128,14 +121,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             >>> with open("output.wav", "wb") as f:
             ...     f.write(audio_bytes)
 
-            # Get audio with timestamps and metadata
-            >>> result = provider.synthesize(
-            ...     "你今日點呀？",
-            ...     should_return_timestamp=True
-            ... )
-            >>> print(f"Audio request ID: {result['request_id']}")
-            >>> for ts in result["timestamps"]:
-            ...     print(f"{ts['text']}: {ts['start']}-{ts['end']}s")
+            # Request timestamp mode but still get audio bytes
+            >>> audio_bytes = provider.synthesize("你今日點呀？", should_return_timestamp=True)
         """
         # ====== INPUT VALIDATION ======
         if not self._validate_text_input(text):
@@ -171,7 +158,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             "language": "cantonese",
             "output_extension": output_format.lower(),
             "frame_rate": frame_rate,
-            "should_return_timestamp": should_return_timestamp
+            "should_return_timestamp": should_return_timestamp,
+            "voice_key": voice_key
         }
 
         # ====== MAKE API CALL ======
@@ -197,11 +185,23 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                 if should_return_timestamp or "application/json" in content_type:
                     try:
                         result = response.json()
-                        logger.info(
-                            f"TTS synthesis successful with timestamps. "
-                            f"Request ID: {result.get('request_id')}"
+                        if "file" in result:
+                            import base64
+                            try:
+                                audio_data = base64.b64decode(result["file"])
+                            except Exception as exc:
+                                raise ValueError(
+                                    f"Failed to decode TTS base64 audio content: {exc}"
+                                ) from exc
+
+                            logger.info(
+                                f"TTS synthesis successful with timestamps. "
+                                f"Request ID: {result.get('request_id')}"
+                            )
+                            return audio_data
+                        raise ValueError(
+                            "TTS JSON response missing 'file' field required for audio bytes."
                         )
-                        return result
                     except ValueError as e:
                         raise ValueError(f"Failed to parse TTS JSON response: {str(e)}")
 
@@ -219,11 +219,23 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                         data = response.json()
                         if "file" in data:
                             import base64
-                            audio_data = base64.b64decode(data["file"])
-                            logger.info(f"TTS synthesis successful (decoded from JSON)")
+                            try:
+                                audio_data = base64.b64decode(data["file"])
+                            except Exception as exc:
+                                raise ValueError(
+                                    f"Failed to decode TTS base64 audio content: {exc}"
+                                ) from exc
+                            logger.info("TTS synthesis successful (decoded from JSON)")
                             return audio_data
-                        return data  # Return as-is if it's valid JSON
-                    except:
+                        logger.warning(
+                            "TTS JSON response missing 'file'; returning raw response content."
+                        )
+                        return response.content
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to parse TTS response as JSON; returning raw content: %s",
+                            exc
+                        )
                         # If all else fails, return raw content
                         return response.content
 
@@ -320,7 +332,7 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             text (str): Cantonese text.
             voice (str, optional): Voice selection.
             output_format (str): Audio format.
-            return_srt (bool): If True, include SRT subtitle format. Default: True.
+            return_srt (bool): If True, include SRT subtitle format. Default: False.
 
         Returns:
             Dict with keys:
@@ -338,39 +350,67 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             >>> # Text output: result["text"]
             >>> # Metadata: result["timestamps"]
         """
-        response = self.synthesize(
-            text,
-            voice=voice,
-            output_format=output_format,
-            should_return_timestamp=True
+        if not self._validate_text_input(text):
+            raise ValueError(
+                f"Invalid text input. Must be 1-{self.MAX_TEXT_LENGTH} characters, "
+                f"containing valid Cantonese/Chinese characters. "
+                f"Received: {len(text)} characters."
+            )
+
+        if output_format.lower() not in self.SUPPORTED_TTS_OUTPUT_FORMATS:
+            raise ValueError(
+                f"Unsupported output format '{output_format}'. "
+                f"Supported: {self.SUPPORTED_TTS_OUTPUT_FORMATS}"
+            )
+
+        voice_key = voice or "default"
+        if voice_key not in self.AVAILABLE_VOICES:
+            raise ValueError(
+                f"Unsupported voice '{voice_key}'. "
+                f"Supported: {list(self.AVAILABLE_VOICES.keys())}"
+            )
+
+        payload = {
+            "api_key": self.api_key,
+            "text": text,
+            "language": "cantonese",
+            "output_extension": output_format.lower(),
+            "frame_rate": self.DEFAULT_FRAME_RATE,
+            "should_return_timestamp": True,
+            "voice_key": voice_key
+        }
+
+        response = self.session.post(
+            self.TTS_ENDPOINT,
+            json=payload,
+            timeout=30
         )
+        if response.status_code != 200:
+            self._handle_api_error(response, "TTS")
 
-        if isinstance(response, bytes):
-            # Fallback if API didn't return timestamp data
-            import base64
-            response = {
-                "file": base64.b64encode(response).decode('utf-8'),
-                "text": text,
-                "request_id": "unknown",
-                "timestamps": [{"start": 0, "end": 0, "text": text}]
-            }
+        try:
+            response_data: Dict[str, Any] = response.json()
+        except ValueError as exc:
+            raise ValueError(f"Failed to parse TTS metadata JSON response: {exc}") from exc
 
-        # Ensure response has all required fields
         import base64
 
-        audio_base64 = response.get("file", "")
-        try:
-            audio_raw = base64.b64decode(audio_base64) if audio_base64 else b""
-        except:
-            audio_raw = b""
+        audio_base64 = response_data.get("file", "")
+        audio_raw = b""
+        if audio_base64:
+            try:
+                audio_raw = base64.b64decode(audio_base64)
+            except Exception as exc:
+                logger.error("Failed to decode base64 audio data: %s", exc)
+                raise ValueError(f"Failed to decode base64 audio data: {exc}") from exc
 
         return {
             "audio": audio_base64,  # Base64 for JSON transmission
             "audio_raw": audio_raw,  # Raw bytes for file writing
             "text": text,  # TEXT OUTPUT
-            "request_id": response.get("request_id", "unknown"),
-            "srt_timestamp": response.get("srt_timestamp", "") if return_srt else None,
-            "timestamps": response.get("timestamps", []),  # METADATA
+            "request_id": response_data.get("request_id", "unknown"),
+            "srt_timestamp": response_data.get("srt_timestamp", "") if return_srt else None,
+            "timestamps": response_data.get("timestamps", []),  # METADATA
             "frame_rate": self.DEFAULT_FRAME_RATE
         }
 
@@ -775,13 +815,18 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                 "message",
                 error_data.get("error", str(error_data))
             )
-        except:
+        except Exception as exc:
+            logger.debug(
+                "Failed to decode %s API error response as JSON: %s",
+                service,
+                str(exc)
+            )
             error_msg = response.text or "Unknown error"
 
         # Map status codes to user-friendly messages
         error_messages = {
             400: f"{service} Bad Request: {error_msg}. Check your input parameters.",
-            401: "Unauthorized: Invalid API key. Check CANTONESE_AI_API_KEY environment variable.",
+            401: "Unauthorized: Invalid API key. Check CANTONESEAI_API_KEY environment variable.",
             403: "Forbidden: You don't have permission to access this resource.",
             413: f"{service} Payload Too Large: File/text exceeds size limit.",
             415: f"{service} Unsupported Media Type: Check audio format or content type.",
