@@ -149,3 +149,11 @@ Optional if ahead of schedule:
 - Prefer feature flags over branching logic in UI.
 - Degrade gracefully when any provider is unavailable.
 - Never block core supportive chat on non-critical integrations.
+
+## 7) Probe Semantics (AWS ECS/ALB)
+
+- `GET /health`: liveness only.
+- `GET /ready`: readiness for traffic routing.
+  - Returns `200` only when `db` and `redis` are reachable.
+  - Returns `503` when required dependencies are unavailable.
+- `GET /health/dependencies`: operational detail for dependency states and fallback visibility.

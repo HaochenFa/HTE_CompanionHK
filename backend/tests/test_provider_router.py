@@ -73,3 +73,52 @@ def test_provider_router_uses_maps_stub_when_key_missing() -> None:
     provider = router.resolve_maps_provider()
 
     assert provider.provider_name == "maps-stub"
+
+
+def test_provider_router_uses_exa_when_enabled_and_key_available() -> None:
+    settings = Settings(
+        FEATURE_EXA_ENABLED=True,
+        EXA_API_KEY="exa-key",
+    )
+    router = ProviderRouter(settings)
+
+    provider = router.resolve_retrieval_provider()
+
+    assert provider.provider_name == "exa"
+
+
+def test_provider_router_uses_stub_retrieval_when_exa_disabled() -> None:
+    settings = Settings(
+        FEATURE_EXA_ENABLED=False,
+        EXA_API_KEY="",
+    )
+    router = ProviderRouter(settings)
+
+    provider = router.resolve_retrieval_provider()
+
+    assert provider.provider_name == "retrieval-stub"
+
+
+def test_provider_router_safety_uses_minimax_model_when_available() -> None:
+    settings = Settings(
+        FEATURE_MINIMAX_ENABLED=True,
+        MINIMAX_API_KEY="test-minimax-key",
+        MINIMAX_SAFETY_MODEL="MiniMax-M2",
+    )
+    router = ProviderRouter(settings)
+
+    provider = router.resolve_safety_provider()
+
+    assert provider.provider_name == "minimax"
+
+
+def test_provider_router_safety_falls_back_to_mock_when_unavailable() -> None:
+    settings = Settings(
+        FEATURE_MINIMAX_ENABLED=False,
+        MINIMAX_API_KEY="",
+    )
+    router = ProviderRouter(settings)
+
+    provider = router.resolve_safety_provider()
+
+    assert provider.provider_name == "mock"

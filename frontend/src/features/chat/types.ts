@@ -17,5 +17,11 @@ export interface ChatResponse {
   safety: {
     risk_level: RiskLevel;
     show_crisis_banner: boolean;
+    emotion_label?: string | null;
+    emotion_score?: number | null;
+    policy_action?: "allow" | "supportive_refusal" | "escalate_banner";
+    monitor_provider?: "minimax" | "rules";
+    degraded?: boolean;
+    fallback_reason?: string | null;
   };
 }
