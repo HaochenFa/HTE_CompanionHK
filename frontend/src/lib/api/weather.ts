@@ -1,4 +1,6 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+import { apiBaseUrl } from "@/lib/api/base-url";
+
+const API_BASE_URL = apiBaseUrl();
 
 export interface WeatherRequestParams {
   latitude: number;

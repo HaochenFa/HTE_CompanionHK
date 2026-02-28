@@ -1,6 +1,7 @@
 import type { ChatHistoryResponse, ChatRequest, ChatResponse, Role } from "@/features/chat/types";
+import { apiBaseUrl } from "@/lib/api/base-url";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = apiBaseUrl();
 const ROLE_CHAT_PATH: Record<Role, string> = {
   companion: "chat/companion",
   local_guide: "chat/guide",

@@ -4,8 +4,9 @@ import type {
   RecommendationRequest,
   RecommendationResponse,
 } from "@/features/recommendations/types";
+import { apiBaseUrl } from "@/lib/api/base-url";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = apiBaseUrl();
 
 export async function postRecommendations(
   payload: RecommendationRequest,
