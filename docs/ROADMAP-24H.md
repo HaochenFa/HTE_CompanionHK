@@ -6,14 +6,14 @@ This roadmap is optimized for a 3-4 person hackathon team.
 
 - Frontend Lead:
   - Next.js + MUI app shell,
-  - chat UI, safety banner UI, recommendation cards,
+  - role-space chat UI, safety banner UI, recommendation cards,
   - dynamic weather/emotion theme behavior.
 - Backend Lead:
   - FastAPI endpoints, orchestration, memory APIs,
-  - safety policy gate and provider adapters.
+  - role-aware chat contract, safety policy gate, and provider adapters.
 - Integration Lead:
   - MiniMax route, Google Maps, weather, voice providers,
-  - emotion/risk monitor and recommendation ranking logic.
+  - role prompt routing, emotion/risk monitor, and recommendation ranking logic.
 - Optional DevOps Lead (if 4th person available):
   - AWS deployment path, env setup, logs/metrics wiring.
 
@@ -38,15 +38,17 @@ Core dependency rule:
 
 - Frontend Lead:
   - initialize Next.js App Router + TypeScript + MUI,
-  - build chat shell (message list, composer, loading/error states),
+  - build role-space chat shell (message list, composer, loading/error states),
+  - add role selector for `Companion` / `Local Guide` / `Study Guide`,
   - add theme context skeleton.
 - Backend Lead:
   - scaffold FastAPI service and health route,
   - define provider adapter interfaces,
-  - add `/chat` endpoint with mocked response and `thread_id` contract.
+  - add `/chat` endpoint with mocked response and `role` + `thread_id` contract.
 - Integration Lead:
   - scaffold LangGraph-capable runtime boundary behind feature flag,
   - keep MiniMax adapter path active under both simple and LangGraph runtimes.
+  - scaffold role-specific prompt templates on the shared model route,
   - configure Google Maps + weather API stubs,
   - configure MiniMax adapter skeleton,
   - set up voice adapter contracts.
@@ -56,32 +58,32 @@ Core dependency rule:
 
 Deliverable:
 
-- Chat UI can call backend and receive a mocked supportive response.
+- Role-space chat UI can call backend and receive mocked responses for all three MVP roles.
 
 ## Hour 4-8: Chat and Safety Baseline
 
 - Frontend Lead:
-  - connect real chat endpoint,
+  - connect real role-aware chat endpoint,
   - implement anti-suicide banner and crisis resources panel.
 - Backend Lead:
-  - add supportive system prompt and refusal policy layer,
+  - add role-specific system prompts and refusal policy layer,
   - implement safety decision API,
-  - wire safety context into runtime state for each `thread_id`.
+  - wire safety context into runtime state for each role-scoped `thread_id`.
 - Integration Lead:
-  - wire MiniMax model route,
+  - wire MiniMax model route shared by all roles,
   - implement emotion/risk scoring path (small model/process),
   - pass safety context to primary chat route.
 
 Deliverable:
 
-- End-to-end supportive chat with dangerous-input refusal and visible safety banner.
+- End-to-end multi-role chat with dangerous-input refusal and visible safety banner.
 
 ## Hour 8-12: Memory Layer
 
 - Frontend Lead:
   - preference capture UI (tone, topics, locale hints).
 - Backend Lead:
-  - implement short-term memory in Redis with TTL,
+  - implement short-term memory in Redis with TTL (role-scoped),
   - implement long-term profile memory schema in Postgres.
 - Integration Lead:
   - add embeddings + pgvector retrieval path for extra materials and fuzzy recall,
@@ -89,7 +91,7 @@ Deliverable:
 
 Deliverable:
 
-- Chat behavior reflects recent conversation and saved preferences.
+- Chat behavior reflects recent role-space conversation and saved preferences.
 
 ## Hour 12-16: Recommendation Engine
 
@@ -150,13 +152,13 @@ Cut order while preserving core value:
 
 Never cut:
 
-- Supportive chat baseline.
+- Multi-role chat baseline.
 - Safety refusal + crisis escalation UX.
 - Basic memory context.
 
 ## 5) Daily Checkpoints
 
-- Checkpoint A (Hour 4): chat shell + mock backend done.
+- Checkpoint A (Hour 4): role-space chat shell + role-aware mock backend done.
 - Checkpoint B (Hour 8): safety behavior working.
 - Checkpoint C (Hour 12): memory persistence working.
 - Checkpoint D (Hour 16): recommendations working.
@@ -165,7 +167,7 @@ Never cut:
 
 ## 6) Demo Readiness Checklist
 
-- User can chat privately with supportive AI friend.
+- User can chat privately in three role spaces (`Companion`, `Local Guide`, `Study Guide`).
 - Dangerous prompts trigger refusal and support banner.
 - AI remembers recent context and user preferences.
 - Recommendations are localized and context-aware.
