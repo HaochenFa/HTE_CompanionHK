@@ -3,7 +3,7 @@ import requests
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Dict, Any, Union, BinaryIO, Tuple
+from typing import Any, BinaryIO, Dict, NoReturn, Optional, Tuple, Union
 from enum import Enum
 
 from app.providers.base import VoiceProvider
@@ -67,7 +67,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             ValueError: If CANTONESEAI_API_KEY environment variable is not set.
         """
         # Backward-compatible fallback keeps previous key name working.
-        self.api_key = os.getenv("CANTONESEAI_API_KEY") or os.getenv("CANTONESE_AI_API_KEY")
+        self.api_key = os.getenv("CANTONESEAI_API_KEY") or os.getenv(
+            "CANTONESE_AI_API_KEY")
         if not self.api_key:
             raise ValueError(
                 "CANTONESEAI_API_KEY environment variable not set. "
@@ -203,7 +204,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                             "TTS JSON response missing 'file' field required for audio bytes."
                         )
                     except ValueError as e:
-                        raise ValueError(f"Failed to parse TTS JSON response: {str(e)}")
+                        raise ValueError(
+                            f"Failed to parse TTS JSON response: {str(e)}")
 
                 # If should_return_timestamp=False, response is binary audio
                 elif "audio" in content_type or output_format.lower() in content_type:
@@ -225,7 +227,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                                 raise ValueError(
                                     f"Failed to decode TTS base64 audio content: {exc}"
                                 ) from exc
-                            logger.info("TTS synthesis successful (decoded from JSON)")
+                            logger.info(
+                                "TTS synthesis successful (decoded from JSON)")
                             return audio_data
                         logger.warning(
                             "TTS JSON response missing 'file'; returning raw response content."
@@ -295,19 +298,20 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             )
 
             if not isinstance(audio, bytes):
-                raise TypeError("Expected bytes from synthesize(), got dict or other type")
+                raise TypeError(
+                    "Expected bytes from synthesize(), got dict or other type")
 
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            dest = Path(output_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(output_path, "wb") as f:
+            with open(dest, "wb") as f:
                 f.write(audio)
 
-            file_size = output_path.stat().st_size
-            logger.info(f"Audio saved to {output_path} ({file_size} bytes)")
+            file_size = dest.stat().st_size
+            logger.info(f"Audio saved to {dest} ({file_size} bytes)")
 
             return {
-                "file_path": str(output_path.resolve()),
+                "file_path": str(dest.resolve()),
                 "file_size_bytes": file_size,
                 "audio_format": output_format,
                 "text": text
@@ -315,7 +319,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
 
         except IOError as e:
             logger.error(f"Failed to save audio file: {str(e)}")
-            raise IOError(f"Cannot write audio file to {output_path}: {str(e)}")
+            raise IOError(
+                f"Cannot write audio file to {output_path}: {str(e)}")
 
     def synthesize_with_metadata(
             self,
@@ -391,7 +396,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
         try:
             response_data: Dict[str, Any] = response.json()
         except ValueError as exc:
-            raise ValueError(f"Failed to parse TTS metadata JSON response: {exc}") from exc
+            raise ValueError(
+                f"Failed to parse TTS metadata JSON response: {exc}") from exc
 
         import base64
 
@@ -402,7 +408,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                 audio_raw = base64.b64decode(audio_base64)
             except Exception as exc:
                 logger.error("Failed to decode base64 audio data: %s", exc)
-                raise ValueError(f"Failed to decode base64 audio data: {exc}") from exc
+                raise ValueError(
+                    f"Failed to decode base64 audio data: {exc}") from exc
 
         return {
             "audio": audio_base64,  # Base64 for JSON transmission
@@ -644,15 +651,17 @@ class CantoneseAIVoiceProvider(VoiceProvider):
         results = {}
 
         for i, audio_file in enumerate(audio_files):
+            file_id = (
+                Path(audio_file).name if isinstance(audio_file, str)
+                else f"audio_{i}"
+            )
             try:
-                file_id = (
-                    Path(audio_file).name if isinstance(audio_file, str)
-                    else f"audio_{i}"
-                )
                 results[file_id] = self.transcribe(audio_file, **kwargs)
-                logger.info(f"Batch transcribe: {file_id} completed successfully")
+                logger.info(
+                    f"Batch transcribe: {file_id} completed successfully")
             except Exception as e:
-                logger.error(f"Batch transcribe error for {audio_file}: {str(e)}")
+                logger.error(
+                    f"Batch transcribe error for {audio_file}: {str(e)}")
                 results[file_id] = {
                     "error": str(e),
                     "success": False,
@@ -695,6 +704,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
             >>> transcribed_text = result["text"]  # Text output
         """
         if mode.lower() == "tts":
+            if not isinstance(input_data, str):
+                raise TypeError("TTS mode requires text (str) input_data.")
             return self.synthesize_with_metadata(input_data, **kwargs)
 
         elif mode.lower() == "stt":
@@ -725,7 +736,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
         import re
         # This regex accepts: CJK characters, Latin, digits, spaces, and common punctuation
         valid_pattern = (
-            r'^[\u4e00-\u9fff\u3400-\u4dbf'  # CJK Unified Ideographs + CJK Extension A
+            # CJK Unified Ideographs + CJK Extension A
+            r'^[\u4e00-\u9fff\u3400-\u4dbf'
             r'\u3040-\u309f\u30a0-\u30ff'  # Hiragana + Katakana
             r'a-zA-Z0-9\s\.\,\!\?\：\；\「\」\『\』'
             r'\（\）\，\。\？\！\：\；\—\·\—\-\*\'\"\、\;:,()\[\]{{}}<>\/\\@#\$%\^&\+=\|~`!]+$'
@@ -781,7 +793,8 @@ class CantoneseAIVoiceProvider(VoiceProvider):
 
             # Try to get format from file object name
             if not detected_format and hasattr(audio_file, "name"):
-                detected_format = Path(audio_file.name).suffix.lstrip(".").lower()
+                detected_format = Path(
+                    audio_file.name).suffix.lstrip(".").lower()
 
         else:
             raise TypeError(
@@ -795,7 +808,7 @@ class CantoneseAIVoiceProvider(VoiceProvider):
 
         return audio_data, detected_format.lower()
 
-    def _handle_api_error(self, response: requests.Response, service: str) -> None:
+    def _handle_api_error(self, response: requests.Response, service: str) -> NoReturn:
         """
         Handle API errors with descriptive messages.
 
@@ -874,12 +887,14 @@ class CantoneseAIVoiceProvider(VoiceProvider):
                 timeout=5
             )
 
-            is_healthy = response.status_code in [200, 400, 422]  # 400/422 = bad input, but API is up
+            # 400/422 = bad input, but API is up
+            is_healthy = response.status_code in [200, 400, 422]
 
             if is_healthy:
                 logger.info("Health check: API is accessible")
             else:
-                logger.warning(f"Health check: API returned {response.status_code}")
+                logger.warning(
+                    f"Health check: API returned {response.status_code}")
 
             return is_healthy
 

@@ -1,6 +1,7 @@
 import logging
 import math
 from hashlib import sha256
+from typing import Any
 from uuid import uuid4
 
 from app.core.database import SessionLocal
@@ -330,7 +331,7 @@ class RecommendationService:
             timezone="auto"
         )
 
-        deduplicated_places: dict[str, dict[str, object]] = {}
+        deduplicated_places: dict[str, dict[str, Any]] = {}
         for query in self._build_search_queries(request.query):
             candidates = maps_provider.search_places(
                 query=query,

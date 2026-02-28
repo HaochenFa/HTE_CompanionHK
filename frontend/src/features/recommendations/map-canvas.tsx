@@ -109,6 +109,7 @@ export function MapCanvas({ apiKey, center, recommendations }: MapCanvasProps) {
     let active = true;
 
     async function renderMap() {
+      if (!apiKey) return;
       try {
         await loadGoogleMapsScript(apiKey);
         if (!active || !mapContainerRef.current) {

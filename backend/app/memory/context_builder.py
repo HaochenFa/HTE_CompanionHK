@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from app.core.database import SessionLocal
 from app.core.redis_client import (
@@ -48,10 +48,13 @@ class ConversationContextBuilder:
         )
         try:
             redis_client = get_redis_client()
-            short_term_entries = redis_client.lrange(
-                redis_key,
-                0,
-                self._settings.memory_short_term_max_turns - 1,
+            short_term_entries = cast(
+                list[Any],
+                redis_client.lrange(
+                    redis_key,
+                    0,
+                    self._settings.memory_short_term_max_turns - 1,
+                ),
             )
             short_term_context["entries"] = [
                 entry
