@@ -21,7 +21,7 @@ def test_chat_endpoint_returns_mock_supportive_response() -> None:
     assert body["provider"] == "mock"
     assert body["runtime"] == "simple"
     assert body["thread_id"] == "test-user-companion-thread"
-    assert body["safety"]["risk_level"] == "low"
+    assert "risk_level" not in body["safety"]
     assert body["safety"]["show_crisis_banner"] is False
     assert "here with you" in body["reply"].lower()
 

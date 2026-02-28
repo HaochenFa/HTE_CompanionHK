@@ -14,6 +14,11 @@ vi.mock("@/components/weather-provider", () => ({
   useWeather: () => ({ condition: "unknown", isDay: true, temperatureC: null }),
   WeatherProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/chat/companion",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 describe("ChatShell", () => {
   beforeEach(() => {
@@ -38,7 +43,6 @@ describe("ChatShell", () => {
       provider: "mock",
       reply: "I am here with you.",
       safety: {
-        risk_level: "low",
         show_crisis_banner: false,
       },
     });
@@ -69,7 +73,6 @@ describe("ChatShell", () => {
       provider: "mock",
       reply: "Try Sheung Wan and PMQ for this route.",
       safety: {
-        risk_level: "low",
         show_crisis_banner: false,
       },
     });

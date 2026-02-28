@@ -12,7 +12,9 @@ class ChatRequest(BaseModel):
 
 
 class SafetyResult(BaseModel):
-    risk_level: Literal["low", "medium", "high"] = "low"
+    risk_level: Literal["low", "medium", "high"] = Field(
+        default="low", exclude=True,
+    )
     show_crisis_banner: bool = False
 
 

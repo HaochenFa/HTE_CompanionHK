@@ -1,4 +1,3 @@
-export type RiskLevel = "low" | "medium" | "high";
 export type Role = "companion" | "local_guide" | "study_guide";
 
 export interface ChatRequest {
@@ -15,7 +14,6 @@ export interface ChatResponse {
   provider: string;
   reply: string;
   safety: {
-    risk_level: RiskLevel;
     show_crisis_banner: boolean;
   };
 }
