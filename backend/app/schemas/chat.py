@@ -1,11 +1,14 @@
 from typing import Literal
 from pydantic import BaseModel, Field
 
+ChatRole = Literal["companion", "local_guide", "study_guide"]
+
 
 class ChatRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
     thread_id: str | None = Field(default=None, min_length=1)
+    role: ChatRole = "companion"
 
 
 class SafetyResult(BaseModel):

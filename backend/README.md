@@ -4,13 +4,18 @@ FastAPI orchestration service for CompanionHK.
 
 Current framework notes:
 
-- `/chat` is thread-aware (`thread_id`) for stateful session continuity.
+- `/chat` is role-aware and thread-aware (`role` + `thread_id`) for stateful session continuity.
 - Runtime is feature-flagged:
   - `FEATURE_LANGGRAPH_ENABLED=false` -> `simple` runtime
   - `FEATURE_LANGGRAPH_ENABLED=true` -> LangGraph-capable runtime path
 - Long-term memory strategy is controlled by:
   - `MEMORY_LONG_TERM_STRATEGY` (default: `hybrid_profile_retrieval`)
   - `MEMORY_RETRIEVAL_TOP_K`
+
+Role contract:
+
+- `role` values: `companion`, `local_guide`, `study_guide`
+- thread continuity is scoped by (`user_id`, `role`, `thread_id`)
 
 ## Local Commands
 

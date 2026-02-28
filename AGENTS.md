@@ -4,8 +4,11 @@ This file defines how humans and AI agents should build `CompanionHK` (also call
 
 ## 1) Mission and Product North Star
 
-- Build an AI friend for Hong Kong users that is supportive, safe, and useful in daily life.
-- Deliver emotional companionship plus local guidance in natural, localized wording.
+- Build a multi-role AI companion for Hong Kong users that is supportive, safe, and useful in daily life.
+- Deliver role-specific support in natural, localized wording:
+  - `Companion` for emotional companionship,
+  - `Local Guide` for local tour/lifestyle guidance,
+  - `Study Guide` for studying support.
 - Optimize for a strong live demo: warm interaction, practical recommendations, and visible safety design.
 
 ## 2) Hackathon Rules (Non-Negotiable)
@@ -42,8 +45,15 @@ Implementation rule:
 
 Must-have:
 
-- Private free-form conversation with the AI friend.
-- Supportive conversation behavior (empathetic, encouraging, non-judgmental).
+- Private free-form conversation across three role spaces:
+  - `Companion`,
+  - `Local Guide`,
+  - `Study Guide`.
+- Role-specific behavior:
+  - `Companion`: empathetic, encouraging, non-judgmental support.
+  - `Local Guide`: practical local activities, places, and routing-aware suggestions.
+  - `Study Guide`: structured studying help, planning, and concept reinforcement.
+- Preserve separate conversation continuity per role using (`user_id`, `role`, `thread_id`).
 - Short-term memory from recent chat context.
 - Long-term memory for user preferences and recurring facts.
 - Local recommendations using:
@@ -57,6 +67,13 @@ Nice-to-have (after MVP):
 
 - Multi-provider voice fallback (`ElevenLabs` <-> `Cantonese.ai`).
 - Rich preference personalization controls.
+
+## 4.1) Multi-Role MVP Rule
+
+- Roles in MVP are non-negotiable: `companion`, `local_guide`, `study_guide`.
+- UX uses separate role spaces with independent conversation history per role.
+- Backend keeps one primary chat model route and selects role-specific prompts/policies per request.
+- Role context must be explicit in the chat contract (`role` + `thread_id`) and propagated through runtime and memory hooks.
 
 ## 5) Safety and Mental Health Alignment
 
@@ -134,11 +151,12 @@ Reference docs:
 
 - `docs/TECHSTACK.md` for detailed architecture and component responsibilities.
 - `docs/ROADMAP-24H.md` for owner-based execution timeline.
+- `docs/architecture/role-system.md` for role definitions and role-scoped chat contract.
 
 ## 9) Memory Design Rules
 
 - Short-term memory:
-  - keep rolling conversation context in Redis with TTL.
+  - keep rolling conversation context in Redis with TTL, scoped by role-space thread identity.
   - summarize older turns when token budget is tight.
 - Long-term memory:
   - keep durable user profile/preferences in Postgres as source of truth.
@@ -148,8 +166,8 @@ Reference docs:
 
 ## 9.1) Stateful Orchestration Rule
 
-- Preserve a `thread_id` across turns so conversation state can resume deterministically.
-- If LangGraph service/runtime is enabled, use thread checkpoints for short-term conversational state.
+- Preserve (`user_id`, `role`, `thread_id`) across turns so conversation state can resume deterministically per role space.
+- If LangGraph service/runtime is enabled, use checkpoints keyed by role-scoped `thread_id` for short-term conversational state.
 - Keep provider adapters independent from orchestration runtime so `MiniMax` remains swappable.
 
 ## 10) Recommendation Engine Rules
@@ -195,8 +213,8 @@ Definition of done for each slice:
 
 ## 13) 24-Hour Roadmap Summary
 
-- Hour 0-4: foundation and scaffolding.
-- Hour 4-8: chat flow and safety baseline.
+- Hour 0-4: foundation, scaffolding, and role-space contract.
+- Hour 4-8: role prompts, chat flow, and safety baseline.
 - Hour 8-12: short-term + long-term memory.
 - Hour 12-16: recommendations (weather + mood + maps).
 - Hour 16-20: voice pipeline.
@@ -214,7 +232,7 @@ Detailed, owner-based plan: `docs/ROADMAP-24H.md`.
 
 ## 15) MVP Priority Order
 
-1. Core supportive chat experience
+1. Multi-role chat experience (`Companion` + `Local Guide` + `Study Guide`)
 2. Safety layer and crisis escalation UX
 3. Memory (short-term then long-term)
 4. Local recommendations with weather + mood + preferences

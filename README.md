@@ -1,6 +1,6 @@
 # CompanionHK (`港伴AI`)
 
-CompanionHK is an AI companion app for Hong Kong users, focused on supportive conversation, safety, and practical local recommendations.
+CompanionHK is an AI companion app for Hong Kong users with three role spaces: `Companion`, `Local Guide`, and `Study Guide`, focused on safety and practical daily support.
 
 This repository currently contains the foundational framework (Hour 0-4 scope):
 
@@ -13,6 +13,7 @@ Architecture direction (agreed):
 - Keep provider adapters with `MiniMax` preserved as the core model route.
 - Support stateful orchestration through a LangGraph-capable runtime boundary (feature-flagged).
 - Use hybrid long-term memory: Postgres profile memory + pgvector retrieval memory.
+- Use one chat model route with role-specific prompts and role-scoped thread spaces.
 
 ## Quick Start
 
@@ -40,8 +41,8 @@ Architecture direction (agreed):
 
 The foundation slice includes:
 
-- chat shell UI,
-- `/health` and mocked `/chat` backend routes,
+- multi-role chat shell UI (Companion / Local Guide / Study Guide),
+- `/health` and mocked `/chat` backend routes with `role` + `thread_id` contract,
 - adapter-first provider skeletons,
 - local Postgres/Redis baseline,
 - smoke tests for frontend and backend contracts.

@@ -22,7 +22,7 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 
 - Stack: `Next.js + TypeScript + MUI`
 - Responsibilities:
-  - chat UI and memory-aware conversation screens,
+  - role-space chat UI (`Companion`, `Local Guide`, `Study Guide`) with per-role conversation screens,
   - weather/emotion adaptive theming,
   - recommendation cards,
   - voice controls and playback UI,
@@ -32,8 +32,8 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 
 - Stack: `FastAPI` + `Pydantic` + LangGraph-capable runtime boundary
 - Responsibilities:
-  - prompt orchestration and provider routing,
-  - maintain `thread_id` continuity for stateful turns,
+  - role-aware prompt orchestration and provider routing,
+  - maintain (`user_id`, `role`, `thread_id`) continuity for stateful turns,
   - select orchestration runtime (`simple` or `langgraph`) via feature flag,
   - safety policy enforcement,
   - memory read/write policy,
@@ -47,7 +47,7 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 - `pgvector`:
   - semantic retrieval over long-term memory and extra knowledge materials.
 - `Redis`:
-  - short-term context windows with TTL,
+  - short-term context windows with TTL (role-space scoped),
   - temporary state,
   - rate-limit counters.
 
@@ -60,7 +60,8 @@ Memory strategy:
 ## AI and Safety Layer
 
 - Primary conversation route:
-  - provider-agnostic adapter with `MiniMax` integrated for sponsor value.
+  - one provider-agnostic adapter route with `MiniMax` integrated for sponsor value.
+  - role-specific prompt/policy selection for `companion`, `local_guide`, `study_guide`.
 - Safety/emotion route:
   - smaller model/process for risk scoring and emotion tagging.
 - Safety policy:
@@ -116,7 +117,7 @@ Memory strategy:
 
 Must-have for demo:
 
-- End-to-end supportive chat.
+- End-to-end multi-role chat (`Companion`, `Local Guide`, `Study Guide`) with separate role spaces.
 - Safety monitoring + refusal + crisis banner.
 - Short-term memory (`Redis`) + basic long-term memory (`PostgreSQL`).
 - Recommendation endpoint using mood/weather/preferences + Google Maps.

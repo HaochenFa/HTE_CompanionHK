@@ -4,7 +4,8 @@ import { CompanionThemeProvider } from "@/theme/theme-provider";
 
 export const metadata: Metadata = {
   title: "CompanionHK",
-  description: "Supportive AI friend for Hong Kong users",
+  description:
+    "Multi-role AI companion for Hong Kong users: Companion, Local Guide, and Study Guide.",
 };
 
 export default function RootLayout({

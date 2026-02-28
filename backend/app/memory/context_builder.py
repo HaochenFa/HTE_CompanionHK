@@ -1,6 +1,7 @@
 from typing import Any
 
 from app.core.settings import Settings
+from app.schemas.chat import ChatRole
 
 
 class ConversationContextBuilder:
@@ -14,11 +15,19 @@ class ConversationContextBuilder:
     def __init__(self, settings: Settings):
         self._settings = settings
 
-    def build(self, *, user_id: str, thread_id: str, message: str) -> dict[str, Any]:
+    def build(
+        self,
+        *,
+        user_id: str,
+        thread_id: str,
+        role: ChatRole,
+        message: str
+    ) -> dict[str, Any]:
         _ = message
         return {
             "user_id": user_id,
             "thread_id": thread_id,
+            "role": role,
             "memory": {
                 "strategy": self._settings.memory_long_term_strategy,
                 "short_term": {

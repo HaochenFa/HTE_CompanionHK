@@ -27,7 +27,8 @@ class ChatOrchestrator:
 
     def generate_reply(self, chat_request: ChatRequest) -> ChatResponse:
         request_id = str(uuid4())
-        thread_id = chat_request.thread_id or f"{chat_request.user_id}-default-thread"
+        role = chat_request.role
+        thread_id = chat_request.thread_id or f"{chat_request.user_id}-{role}-thread"
         provider = self._provider_router.resolve_chat_provider()
         provider_route = provider.provider_name
         fallback_reason = (
@@ -38,12 +39,14 @@ class ChatOrchestrator:
         context = self._context_builder.build(
             user_id=chat_request.user_id,
             thread_id=thread_id,
+            role=role,
             message=chat_request.message
         )
 
         logger.info(
-            "chat_orchestrated request_id=%s thread_id=%s runtime=%s provider_route=%s fallback_reason=%s user_id=%s",
+            "chat_orchestrated request_id=%s role=%s thread_id=%s runtime=%s provider_route=%s fallback_reason=%s user_id=%s",
             request_id,
+            role,
             thread_id,
             self._runtime.runtime_name,
             provider_route,
