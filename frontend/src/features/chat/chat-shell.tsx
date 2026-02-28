@@ -9,11 +9,12 @@ import {
   type KeyboardEvent,
 } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Heart, MapPin, BookOpen, Send, Cloud, Sun, CloudRain, ChevronDown } from "lucide-react";
+import { Heart, MapPin, BookOpen, Send, ChevronDown, ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SafetyBanner } from "@/components/safety-banner";
-import { useWeather } from "@/components/weather-provider";
+import { WeatherIsland } from "@/components/weather-island";
 import { MapCanvas } from "@/features/recommendations/map-canvas";
 import { RecommendationList } from "@/features/recommendations/recommendation-list";
 import type { RecommendationResponse } from "@/features/recommendations/types";
@@ -101,6 +102,11 @@ function getBrowserCoordinates(timeoutMs = 2500): Promise<Coordinates | null> {
   });
 }
 
+interface ChatShellProps {
+  initialRole?: Role;
+  userId?: string;
+}
+
 function buildInitialThreadMap(userId: string): Record<Role, string> {
   return {
     companion: `${userId}-companion-thread`,
@@ -119,39 +125,6 @@ function formatTime(ts: number): string {
 
 function roleColor(role: Role): string {
   return `var(--role-${role.replace("_", "-")})`;
-}
-
-/* ─── WeatherPill ─── */
-
-function WeatherPill() {
-  const weather = useWeather();
-  if (weather.condition === "unknown") return null;
-
-  const icons: Record<string, typeof Sun> = {
-    clear: Sun,
-    rain: CloudRain,
-    drizzle: CloudRain,
-    thunderstorm: CloudRain,
-    cloudy: Cloud,
-    partly_cloudy: Cloud,
-    fog: Cloud,
-    snow: Cloud,
-  };
-  const Icon = icons[weather.condition] ?? Cloud;
-  const temp = weather.temperatureC != null ? `${weather.temperatureC.toFixed(0)}°C` : "";
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 12 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={springGentle}
-      className="flex items-center gap-1.5 rounded-full bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-(--shadow-warm-sm) glass glass-border"
-    >
-      <Icon className="size-3.5" />
-      <span className="capitalize">{weather.condition.replace("_", " ")}</span>
-      {temp && <span>{temp}</span>}
-    </motion.div>
-  );
 }
 
 /* ─── TypingIndicator ─── */
@@ -319,10 +292,10 @@ function AutoGrowTextarea({
    ChatShell — main component
    ═══════════════════════════════════════════════════════════ */
 
-export function ChatShell() {
-  const userId = "demo-user";
+export function ChatShell({ initialRole = "companion", userId = "demo-user" }: ChatShellProps) {
+  const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
-  const [activeRole, setActiveRole] = useState<Role>("companion");
+  const [activeRole, setActiveRole] = useState<Role>(initialRole);
   const threadIdRef = useRef(buildInitialThreadMap(userId));
   const [messagesByRole, setMessagesByRole] =
     useState<Record<Role, ChatMessage[]>>(buildInitialMessageMap());
@@ -467,11 +440,20 @@ export function ChatShell() {
         className="relative flex items-center justify-between px-4 py-3 md:px-6 glass"
       >
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => router.push("/")}
+            className="rounded-lg text-muted-foreground"
+            aria-label="Back to home"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
           <span className="text-xl font-bold font-heading text-foreground tracking-tight">
             港伴<span className="text-primary">AI</span>
           </span>
         </div>
-        <WeatherPill />
+        <WeatherIsland />
         <div
           className="absolute inset-x-0 bottom-0 h-px"
           style={{

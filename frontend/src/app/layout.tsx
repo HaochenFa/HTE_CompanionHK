@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Nunito, Nunito_Sans } from "next/font/google";
 import { WeatherProvider } from "@/components/weather-provider";
+import { AuthProvider } from "@/lib/auth-context";
 import "./globals.css";
 
 const nunito = Nunito({
@@ -27,7 +28,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${nunito.variable} ${nunitoSans.variable}`}>
       <body>
-        <WeatherProvider>{children}</WeatherProvider>
+        <AuthProvider>
+          <WeatherProvider>{children}</WeatherProvider>
+        </AuthProvider>
       </body>
     </html>
   );
