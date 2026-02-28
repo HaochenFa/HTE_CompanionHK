@@ -2,23 +2,61 @@
 
 FastAPI orchestration service for CompanionHK.
 
-Current framework notes:
+## Route Prefix
 
-- `/chat` is role-aware and thread-aware (`role` + `thread_id`) for stateful session continuity.
-- Role-scoped chat aliases are available for frontend routing stability:
-  - `POST /chat/companion`
-  - `POST /chat/guide`
-  - `POST /chat/study`
-- Chat history retrieval is available for refresh-resilient UX:
-  - `GET /chat/history`
-  - `GET /chat/companion/history`
-  - `GET /chat/guide/history`
-  - `GET /chat/study/history`
-- `/chat` now runs a smaller safety monitor flow (MiniMax + rules fallback) and returns enriched `safety` metadata.
-- Recommendations support turn-binding with optional `chat_request_id` and history restore via `POST /recommendations/history`.
-- `/safety/evaluate` provides standalone risk/emotion scoring with the same monitor logic used by `/chat`.
-- `/voice/tts` and `/voice/stt` expose voice provider orchestration with fallback.
-- `/health/dependencies` and `/ready` provide dependency readiness checks for deployment probes.
+All API routes are registered at both `/` and `/api/` prefixes. For example, `/chat` and `/api/chat` both work. The `/api/` prefix is the canonical path for frontend integration.
+
+## API Endpoints
+
+### Chat
+
+- `POST /chat` — generic chat endpoint (requires `role` in body).
+- `POST /chat/companion` — Companion role chat.
+- `POST /chat/guide` — Local Guide role chat.
+- `POST /chat/study` — Study Guide role chat.
+- `GET /chat/history` — get chat history (query params: `user_id`, `role`, `thread_id`, `limit`).
+- `GET /chat/companion/history` — Companion history.
+- `GET /chat/guide/history` — Local Guide history.
+- `GET /chat/study/history` — Study Guide history.
+- `DELETE /chat/history` — clear chat history.
+- `DELETE /chat/companion/history` — clear Companion history.
+- `DELETE /chat/guide/history` — clear Local Guide history.
+- `DELETE /chat/study/history` — clear Study Guide history.
+
+Chat runs a safety monitor flow (MiniMax + rules fallback) on every message and returns enriched `safety` metadata.
+
+### Recommendations
+
+- `POST /recommendations` — generate location-based recommendations.
+- `POST /recommendations/history` — restore recommendation sets tied to prior assistant turns via `request_ids`.
+
+Recommendations support turn-binding with optional `chat_request_id`.
+
+### Safety
+
+- `POST /safety/evaluate` — standalone risk/emotion scoring with the same monitor logic used by `/chat`.
+
+### Voice
+
+- `POST /voice/tts` — text-to-speech synthesis. Accepts JSON with `text`, `language`, `preferred_provider`. Returns base64 audio.
+- `POST /voice/stt` — speech-to-text transcription. Accepts multipart form with audio file. Returns transcribed text.
+
+Both endpoints support provider fallback (ElevenLabs -> Cantonese.ai).
+
+### Weather
+
+- `GET /weather` — get current weather (query params: `latitude`, `longitude`, `timezone`).
+
+### Health and Readiness
+
+- `GET /health` — liveness endpoint (process-level).
+- `GET /health/dependencies` — per-dependency status (`db`, `redis`, providers).
+- `GET /health/runtime` — runtime configuration (LangGraph vs simple, feature flags, library availability).
+- `GET /health/exa-probe` — Exa retrieval provider probe.
+- `GET /ready` — readiness endpoint for ECS/ALB probes (200 when DB + Redis reachable, 503 otherwise).
+
+## Framework Notes
+
 - Runtime is feature-flagged:
   - `FEATURE_LANGGRAPH_ENABLED=false` -> `simple` runtime
   - `FEATURE_LANGGRAPH_ENABLED=true` -> LangGraph-capable runtime path

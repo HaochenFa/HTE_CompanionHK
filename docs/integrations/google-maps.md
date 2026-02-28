@@ -29,13 +29,15 @@ Server-side web services:
 
 Client-side map rendering:
 
-- Maps JavaScript API
+- Maps JavaScript API via `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
   - Purpose: interactive map canvas and markers.
+  - Frontend component: `src/features/recommendations/map-canvas.tsx` renders a Google Maps canvas with markers for each recommended place.
+  - Markers are placed using `location.latitude` / `location.longitude` from recommendation response items.
 
-Optional field support:
+Photo URL support:
 
-- Photo URLs are generated from `photo_reference`:
-  - `https://maps.googleapis.com/maps/api/place/photo?maxwidth=<n>&photo_reference=<ref>&key=<api_key>`
+- Photo URL generation is currently disabled in the backend provider (`backend/app/providers/google_maps.py`) for security reasons.
+- The `photo_url` field in recommendation responses will be `null` until photo proxying is implemented.
 
 ## Internal Backend API Contract
 

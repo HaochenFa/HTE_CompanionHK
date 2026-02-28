@@ -4,7 +4,7 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 
 ## 1) Final Stack (Single Source of Truth)
 
-- Frontend: `Next.js (App Router)` + `TypeScript` + `MUI`
+- Frontend: `Next.js 16 (App Router)` + `TypeScript 5.9` + `Tailwind CSS 4` + `shadcn/ui` + `Framer Motion`
 - Backend API: `Python` + `FastAPI`
 - Stateful orchestration runtime: `LangGraph`-capable service boundary (feature-flagged)
 - Primary database: `PostgreSQL`
@@ -20,13 +20,22 @@ This document locks the implementation stack for the 24-hour hackathon MVP.
 
 ## Frontend Layer
 
-- Stack: `Next.js + TypeScript + MUI`
+- Stack: `Next.js 16 (App Router)` + `TypeScript 5.9` + `Tailwind CSS 4` + `shadcn/ui (Radix UI)` + `Framer Motion`
+- Multi-page routing: `/welcome` (landing), `/login` (auth), `/` (role selection), `/chat/[role]` (chat), `/weather` (weather details)
+- Auth: `AuthProvider` context with localStorage-based login/signup (hackathon scope)
+- UI components: 8 shadcn/ui primitives (`button`, `card`, `input`, `badge`, `alert`, `avatar`, `scroll-area`, `collapsible`)
+- Design system: CSS custom properties in `globals.css` for weather-adaptive themes (10+ states), role-specific colors, safety colors, glassmorphism utilities, Nunito/Nunito Sans typography
 - Responsibilities:
-  - role-space chat UI (`Companion`, `Local Guide`, `Study Guide`) with per-role conversation screens,
-  - weather/emotion adaptive theming,
-  - recommendation cards,
+  - role-space chat UI (`Companion`, `Local Guide`, `Study Guide`) with per-role URL-based routing,
+  - weather-adaptive theming via `WeatherProvider` context with localStorage caching,
+  - recommendation cards with Google Maps canvas (`map-canvas.tsx`),
+  - image attachments in chat (JPEG/PNG/WebP, max 5MB),
+  - markdown rendering (`react-markdown` + `remark-gfm` + `rehype-sanitize`),
+  - collapsible assistant thinking blocks,
+  - per-message TTS playback with provider selection,
   - voice controls and playback UI,
-  - safety banner and crisis resources.
+  - safety banner and crisis resources (dismissible, weather-adaptive styling),
+  - Framer Motion animations throughout.
 
 ## API and Orchestration Layer
 

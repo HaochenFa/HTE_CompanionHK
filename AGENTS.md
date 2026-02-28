@@ -109,18 +109,19 @@ Risk monitoring rule:
 
 ## 7) Finalized UI Kit Decision
 
-- Primary UI kit (locked): `MUI`.
-- Why `MUI`:
-  - fastest path to a polished MVP in 24 hours,
-  - complete component coverage for chat, forms, cards, alerts, and dialogs,
-  - mature Next.js App Router integration,
-  - robust runtime theming for weather + emotion adaptation.
-- Fallback UI kit: `Chakra UI` if a hard blocker appears.
-- Deferred for this sprint: `shadcn/ui` (can be evaluated after MVP).
+- Primary UI kit (locked): `Tailwind CSS 4` + `shadcn/ui` (Radix UI primitives) + `Framer Motion`.
+- Why this stack:
+  - CSS-first theming via custom properties enables weather-adaptive and role-specific palettes without runtime overhead,
+  - `shadcn/ui` provides accessible, composable primitives (button, card, input, badge, alert, avatar, scroll-area, collapsible) that are easy to customize,
+  - Radix UI accessibility out of the box,
+  - `Framer Motion` for polished transitions and micro-interactions,
+  - Tailwind utility classes keep styling co-located and fast to iterate.
+- Typography: `Nunito` (headings) + `Nunito Sans` (body).
+- Design system: `globals.css` with CSS custom properties for weather themes (10+ states), role colors, safety colors, glassmorphism utilities, and animation keyframes.
 
 ## 8) Finalized Tech Stack (Locked for This Sprint)
 
-- Frontend: `Next.js (App Router)` + `TypeScript` + `MUI`.
+- Frontend: `Next.js (App Router)` + `TypeScript` + `Tailwind CSS 4` + `shadcn/ui` + `Framer Motion`.
 - Backend API/orchestration: `Python` + `FastAPI` (+ `Pydantic` models).
 - Data and memory:
   - `PostgreSQL` as source of truth,

@@ -60,10 +60,20 @@ Rules:
 - Each role space has independent conversation history.
 - Switching roles does not reuse prior role context.
 - Short-term memory/checkpoints should key by role-scoped thread identity.
-- Frontend role URLs use slugs and map to canonical roles:
-  - `/chat/companion` -> `companion`
-  - `/chat/guide` -> `local_guide`
-  - `/chat/study` -> `study_guide`
+
+## Frontend Role Routing
+
+Roles are URL-routed in the frontend via `src/features/chat/role-routing.ts`:
+
+- `/chat/companion` -> `companion`
+- `/chat/guide` -> `local_guide`
+- `/chat/study` -> `study_guide`
+
+Role selection happens on the home page (`/`). Selecting a role navigates to `/chat/[slug]`. Role switching within chat also uses URL navigation (not tab switching within a single page).
+
+Each role page hydrates its message history from the backend on mount via `GET /chat/{role}/history`.
+
+The `local_guide` role additionally renders a recommendations panel with Google Maps canvas when recommendation data is available.
 
 ## Shared Model Route with Role Prompts
 

@@ -146,46 +146,62 @@ npm run build
 npm run start
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000` — you will land on the welcome page.
 
 Quick API smoke checks:
 
 ```bash
 curl -s http://localhost:8000/health
-curl -s http://localhost:8000/
+curl -s http://localhost:8000/api/health
 ```
 
 Expected:
 
-- `/` returns `{"status":"ok"}`
-- `/health` returns healthy status payload
+- Both return healthy status payload.
+- Routes work with and without `/api/` prefix.
 
 ## 8) Manual E2E Checklist
 
 Use the UI at `http://localhost:3000`.
 
-### A. Multi-role chat continuity and separation
+### A. Auth flow
 
-1. In `Companion`, send: "I feel stressed after work."
-2. Switch to `Study Guide`, send: "Help me make a 3-day study plan for calculus."
-3. Switch to `Local Guide`, send: "Recommend a quiet cafe in Central."
-4. Switch back across tabs.
+1. You should land on `/welcome` (landing page).
+2. Click "Get Started" to navigate to `/login`.
+3. Enter a username and submit.
+4. You should be redirected to `/` (role selection page).
+5. Refresh the page — auth should persist (localStorage).
+
+Expected:
+
+- Unauthenticated users cannot access `/` or `/chat/*` routes.
+- Login state persists across page refreshes.
+
+### B. Multi-role chat continuity and separation
+
+1. Select `Companion` role — navigates to `/chat/companion`.
+2. Send: "I feel stressed after work."
+3. Go back to role selection and select `Study Guide` — navigates to `/chat/study`.
+4. Send: "Help me make a 3-day study plan for calculus."
+5. Go back and select `Local Guide` — navigates to `/chat/guide`.
+6. Send: "Recommend a quiet cafe in Central."
+7. Navigate between role pages.
 
 Expected:
 
 - Each role keeps its own conversation history.
-- Messages do not leak between role tabs.
+- Messages do not leak between roles.
+- History hydrates correctly on role page revisit.
 
-### B. Backend chat contract sanity
+### C. Backend chat contract sanity
 
 Run:
 
 ```bash
-curl -s -X POST http://localhost:8000/chat \
+curl -s -X POST http://localhost:8000/chat/companion \
   -H "Content-Type: application/json" \
   -d '{
     "user_id":"manual-e2e-user",
-    "role":"companion",
     "thread_id":"manual-e2e-thread",
     "message":"hello"
   }'
@@ -193,22 +209,53 @@ curl -s -X POST http://localhost:8000/chat \
 
 Expected:
 
-- Response includes `request_id`, `thread_id`, and `reply`.
+- Response includes `request_id`, `thread_id`, `reply`, and `safety` metadata.
 
-### C. Local Guide recommendations + weather context
+### D. Image attachment in chat
 
-1. In `Local Guide`, send a place-oriented request (for example, "Outdoor walk near Tsim Sha Tsui").
-2. Confirm "Live Local Guide Context" appears.
-3. Verify recommendation cards are shown.
+1. In any chat role, click the attachment/image button.
+2. Select a JPEG, PNG, or WebP image (under 5MB).
+3. Send a message with the image attached.
+
+Expected:
+
+- Image preview appears in the sent message.
+- Backend processes the image and returns a reply.
+- No frontend errors.
+
+### E. Local Guide recommendations + weather context
+
+1. In `Local Guide` (`/chat/guide`), send a place-oriented request (e.g., "Outdoor walk near Tsim Sha Tsui").
+2. Verify recommendation cards appear.
+3. If Google Maps keys are configured, verify the map canvas renders with markers.
 
 Expected:
 
 - 3-5 recommendations are returned.
 - Each recommendation includes rationale text.
 - Distance/time hints appear when route data is available.
-- Weather context line appears above recommendations.
+- Weather context is shown.
 
-### D. Degraded fallback behavior (resilience check)
+### F. Weather page
+
+1. Navigate to `/weather`.
+
+Expected:
+
+- Current weather conditions display (temperature, condition).
+- Weather-adaptive background renders.
+
+### G. Safety banner
+
+1. In any role, send a message expressing severe distress.
+
+Expected:
+
+- Crisis resources banner appears with Hong Kong hotlines.
+- Banner is dismissible.
+- Assistant responds with supportive, de-escalating language.
+
+### H. Degraded fallback behavior (resilience check)
 
 Temporarily set in `.env`:
 
@@ -223,7 +270,7 @@ Expected:
 - Recommendations still render with fallback content.
 - No frontend crash.
 
-### E. Optional live Google Maps canvas check
+### I. Optional live Google Maps canvas check
 
 If both keys are set:
 
@@ -234,6 +281,17 @@ Expected:
 
 - Map renders markers for recommended places.
 - Recommendation links open the corresponding place in Google Maps.
+
+### J. Voice TTS playback
+
+1. In any chat, receive an assistant message.
+2. Click the TTS (speaker) button on the message.
+
+Expected:
+
+- Audio plays back the assistant message.
+- Provider selection works (auto, elevenlabs, cantoneseai).
+- Loading and error states are handled.
 
 ## 9) Shutdown and Cleanup
 
@@ -252,6 +310,6 @@ docker compose -f infra/docker-compose.yml down -v
 ## 10) Definition of Done Before Deploy
 
 - Automated tests pass (`pytest -q`, `npm run test`).
-- Manual checklist A-D passes.
+- Manual checklist A-J passes (at minimum A-E and G).
 - No critical console/backend runtime errors during E2E flow.
 - Production-like local run (`npm run build && npm run start`) succeeds.

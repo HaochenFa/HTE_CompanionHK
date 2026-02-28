@@ -82,6 +82,23 @@ Normalized `condition` values:
   - `fallback_reason` populated
 - Frontend must still render with a safe default theme when degraded.
 
+## Frontend Consumption
+
+The frontend consumes weather data through a `WeatherProvider` React context (`src/components/weather-provider.tsx`):
+
+- On mount, reads browser geolocation (with timeout fallback to Hong Kong coordinates).
+- Calls backend `GET /weather` and caches the result in localStorage.
+- Exposes weather state to the component tree for theme adaptation and display.
+
+### Weather UI Components
+
+- `weather-background.tsx` — animated full-page background that changes with weather condition.
+- `weather-island.tsx` — compact floating widget showing current temperature and condition.
+- `weather-details-panel.tsx` — expanded panel with detailed weather information.
+- `/weather` page — dedicated route for full weather details view.
+
+Weather themes are applied via CSS custom properties in `globals.css` (10+ weather states: `clear-day`, `clear-night`, `rain`, `cloudy`, `snow`, `fog`, `drizzle`, `thunderstorm`, `partly-cloudy`, etc.).
+
 ## Usage Guardrails
 
 - Do not call Open-Meteo from frontend directly.

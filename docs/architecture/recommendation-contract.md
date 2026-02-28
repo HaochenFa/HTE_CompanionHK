@@ -125,8 +125,7 @@ Use this endpoint to restore recommendation sets tied to prior assistant turns.
 
 ## Validation Rules
 
-- `role` must be `companion | local_guide | study_guide`.
-- Recommendation flow is optimized for `local_guide`.
+- `role` is restricted to `local_guide` in the recommendation schema (the only role with map-based recommendation UX).
 - `chat_request_id` is optional and should be provided to bind recommendation data to a specific assistant turn id.
 - `max_results` is clamped to `3..5`.
 - `travel_mode` supports `walking | transit | driving`.

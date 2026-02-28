@@ -5,7 +5,7 @@ This roadmap is optimized for a 3-4 person hackathon team.
 ## 1) Team Roles
 
 - Frontend Lead:
-  - Next.js + MUI app shell,
+  - Next.js + Tailwind + shadcn/ui app shell,
   - role-space chat UI, safety banner UI, recommendation cards,
   - dynamic weather/emotion theme behavior.
 - Backend Lead:
@@ -34,10 +34,10 @@ Core dependency rule:
 
 ## 3) Time-Blocked Execution Plan
 
-## Hour 0-4: Foundation and Scaffolding
+## Hour 0-4: Foundation and Scaffolding -- DONE
 
 - Frontend Lead:
-  - initialize Next.js App Router + TypeScript + MUI,
+  - initialize Next.js App Router + TypeScript + Tailwind CSS + shadcn/ui,
   - build role-space chat shell (message list, composer, loading/error states),
   - add role selector for `Companion` / `Local Guide` / `Study Guide`,
   - add theme context skeleton.
@@ -60,7 +60,7 @@ Deliverable:
 
 - Role-space chat UI can call backend and receive mocked responses for all three MVP roles.
 
-## Hour 4-8: Chat and Safety Baseline
+## Hour 4-8: Chat and Safety Baseline -- DONE
 
 - Frontend Lead:
   - connect real role-aware chat endpoint,
@@ -78,7 +78,7 @@ Deliverable:
 
 - End-to-end multi-role chat with dangerous-input refusal and visible safety banner.
 
-## Hour 8-12: Memory Layer
+## Hour 8-12: Memory Layer -- DONE
 
 - Frontend Lead:
   - preference capture UI (tone, topics, locale hints).
@@ -93,7 +93,7 @@ Deliverable:
 
 - Chat behavior reflects recent role-space conversation and saved preferences.
 
-## Hour 12-16: Recommendation Engine
+## Hour 12-16: Recommendation Engine -- DONE
 
 - Frontend Lead:
   - build recommendation cards and reasoning text UI,
@@ -109,7 +109,7 @@ Deliverable:
 
 - Returns 3-5 localized recommendations with mood/context rationale.
 
-## Hour 16-20: Voice Pipeline
+## Hour 16-20: Voice Pipeline -- DONE
 
 - Frontend Lead:
   - build voice input/output controls and playback.
@@ -124,7 +124,7 @@ Deliverable:
 
 - At least one reliable voice conversation path works in demo.
 
-## Hour 20-24: Polish, Deploy, and Demo Hardening
+## Hour 20-24: Polish, Deploy, and Demo Hardening -- IN PROGRESS
 
 - Frontend Lead:
   - warm visual polish, responsive checks, final theme tuning.
@@ -158,12 +158,12 @@ Never cut:
 
 ## 5) Daily Checkpoints
 
-- Checkpoint A (Hour 4): role-space chat shell + role-aware mock backend done.
-- Checkpoint B (Hour 8): safety behavior working.
-- Checkpoint C (Hour 12): memory persistence working.
-- Checkpoint D (Hour 16): recommendations working.
-- Checkpoint E (Hour 20): voice baseline working.
-- Checkpoint F (Hour 24): deployment + demo script finalized.
+- Checkpoint A (Hour 4): role-space chat shell + role-aware mock backend done. -- PASSED
+- Checkpoint B (Hour 8): safety behavior working. -- PASSED
+- Checkpoint C (Hour 12): memory persistence working. -- PASSED
+- Checkpoint D (Hour 16): recommendations working. -- PASSED
+- Checkpoint E (Hour 20): voice baseline working. -- PASSED
+- Checkpoint F (Hour 24): deployment + demo script finalized. -- IN PROGRESS
 
 ## 6) Demo Readiness Checklist
 
