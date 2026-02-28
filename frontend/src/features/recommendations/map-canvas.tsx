@@ -24,7 +24,7 @@ type GoogleLatLngBoundsInstance = {
   extend: (value: unknown) => void;
 };
 type GoogleMapsNamespace = {
-  Map: new (
+  Map?: new (
     element: HTMLDivElement,
     options: {
       center: { lat: number; lng: number };
@@ -35,12 +35,16 @@ type GoogleMapsNamespace = {
       styles?: Record<string, unknown>[];
     },
   ) => GoogleMapInstance;
-  Marker: new (options: {
+  Marker?: new (options: {
     map: GoogleMapInstance;
     position: { lat: number; lng: number };
     title: string;
   }) => GoogleMarkerInstance;
-  LatLngBounds: new () => GoogleLatLngBoundsInstance;
+  LatLngBounds?: new () => GoogleLatLngBoundsInstance;
+  importLibrary?: (library: string) => Promise<Record<string, unknown>>;
+  event?: {
+    trigger: (instance: GoogleMapInstance, eventName: string) => void;
+  };
 };
 
 const WARM_MAP_STYLES: Record<string, unknown>[] = [
@@ -71,34 +75,90 @@ const WARM_MAP_STYLES: Record<string, unknown>[] = [
 ];
 
 let googleMapsLoaderPromise: Promise<void> | null = null;
+const GOOGLE_MAPS_CALLBACK = "__companionhkGoogleMapsReady";
+type GoogleMapsWindow = Window & {
+  google?: { maps?: GoogleMapsNamespace };
+  [GOOGLE_MAPS_CALLBACK]?: () => void;
+};
 
 function readGoogleMapsNamespace(): GoogleMapsNamespace | null {
-  const w = window as Window & { google?: { maps?: GoogleMapsNamespace } };
+  const w = window as GoogleMapsWindow;
   return w.google?.maps ?? null;
 }
 
+function hasReadyMapsConstructors(gm: GoogleMapsNamespace | null): boolean {
+  return Boolean(gm && typeof gm.Map === "function" && typeof gm.LatLngBounds === "function");
+}
+
 function loadGoogleMapsScript(apiKey: string): Promise<void> {
-  if (typeof window !== "undefined" && readGoogleMapsNamespace()) return Promise.resolve();
+  if (typeof window !== "undefined" && hasReadyMapsConstructors(readGoogleMapsNamespace())) {
+    return Promise.resolve();
+  }
   if (googleMapsLoaderPromise) return googleMapsLoaderPromise;
 
   googleMapsLoaderPromise = new Promise((resolve, reject) => {
+    if (hasReadyMapsConstructors(readGoogleMapsNamespace())) {
+      resolve();
+      return;
+    }
+
+    const w = window as GoogleMapsWindow;
+    const rejectWithReset = (message: string) => {
+      googleMapsLoaderPromise = null;
+      reject(new Error(message));
+    };
+    const markReady = () => {
+      if (!hasReadyMapsConstructors(readGoogleMapsNamespace())) return false;
+      resolve();
+      return true;
+    };
+
+    const callbackName = GOOGLE_MAPS_CALLBACK;
+    w[callbackName] = () => {
+      if (!markReady()) {
+        rejectWithReset("Google Maps SDK loaded without required map constructors.");
+      }
+      delete w[callbackName];
+    };
+
     const existing = document.querySelector(
       "script[data-companionhk-google-maps='true']",
     ) as HTMLScriptElement | null;
     if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Failed to load Google Maps.")), {
-        once: true,
-      });
+      if (markReady()) {
+        return;
+      }
+      existing.addEventListener(
+        "load",
+        () => {
+          if (!markReady()) {
+            rejectWithReset("Google Maps SDK loaded without required map constructors.");
+          }
+          delete w[callbackName];
+        },
+        { once: true },
+      );
+      existing.addEventListener(
+        "error",
+        () => {
+          rejectWithReset("Failed to load Google Maps.");
+          delete w[callbackName];
+        },
+        {
+          once: true,
+        },
+      );
       return;
     }
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&loading=async&v=weekly&callback=${GOOGLE_MAPS_CALLBACK}`;
     script.async = true;
     script.defer = true;
     script.dataset.companionhkGoogleMaps = "true";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Google Maps."));
+    script.onerror = () => {
+      rejectWithReset("Failed to load Google Maps.");
+      delete w[callbackName];
+    };
     document.head.appendChild(script);
   });
   return googleMapsLoaderPromise;
@@ -106,7 +166,7 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
 
 function MapSkeleton() {
   return (
-    <div className="relative h-64 sm:h-72 md:h-80 w-full overflow-hidden rounded-b-xl">
+    <div className="relative h-full w-full overflow-hidden rounded-b-xl">
       <div className="animate-shimmer absolute inset-0" />
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="flex flex-col items-center gap-2 text-muted-foreground/50">
@@ -136,14 +196,26 @@ export function MapCanvas({ apiKey, center, recommendations }: MapCanvasProps) {
         await loadGoogleMapsScript(apiKey);
         if (!active || !containerRef.current) return;
         const gm = readGoogleMapsNamespace();
-        if (!gm) {
+        let MapCtor = gm?.Map;
+        let LatLngBoundsCtor = gm?.LatLngBounds;
+        if ((!MapCtor || !LatLngBoundsCtor) && typeof gm?.importLibrary === "function") {
+          const mapsLibrary = await gm.importLibrary("maps");
+          MapCtor =
+            MapCtor ??
+            (mapsLibrary.Map as GoogleMapsNamespace["Map"] | undefined);
+          LatLngBoundsCtor =
+            LatLngBoundsCtor ??
+            (mapsLibrary.LatLngBounds as GoogleMapsNamespace["LatLngBounds"] | undefined);
+        }
+        if (!MapCtor || !LatLngBoundsCtor) {
           setMapError("Google Maps SDK is unavailable.");
+          setIsLoading(false);
           return;
         }
 
         const map =
           mapRef.current ??
-          new gm.Map(containerRef.current, {
+          new MapCtor(containerRef.current, {
             center: { lat: center.latitude, lng: center.longitude },
             zoom: 13,
             mapTypeControl: false,
@@ -156,18 +228,21 @@ export function MapCanvas({ apiKey, center, recommendations }: MapCanvasProps) {
         markersRef.current.forEach((m) => m.setMap(null));
         markersRef.current = [];
 
-        const bounds = new gm.LatLngBounds();
+        const bounds = new LatLngBoundsCtor();
         recommendations.forEach((rec) => {
-          const marker = new gm.Marker({
-            map,
-            position: { lat: rec.location.latitude, lng: rec.location.longitude },
-            title: rec.name,
-          });
-          markersRef.current.push(marker);
-          bounds.extend(marker.getPosition());
+          if (typeof gm?.Marker === "function") {
+            const marker = new gm.Marker({
+              map,
+              position: { lat: rec.location.latitude, lng: rec.location.longitude },
+              title: rec.name,
+            });
+            markersRef.current.push(marker);
+          }
+          bounds.extend({ lat: rec.location.latitude, lng: rec.location.longitude });
         });
         bounds.extend({ lat: center.latitude, lng: center.longitude });
         map.fitBounds(bounds);
+        gm?.event?.trigger(map, "resize");
         setMapError(null);
         setIsLoading(false);
       } catch (err) {
@@ -193,6 +268,15 @@ export function MapCanvas({ apiKey, center, recommendations }: MapCanvasProps) {
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
         </code>{" "}
         to display the map.
+      </div>
+    );
+  }
+
+  if (recommendations.length === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+        <Map className="size-4 shrink-0" />
+        No recommendation locations available for this turn.
       </div>
     );
   }
@@ -225,19 +309,21 @@ export function MapCanvas({ apiKey, center, recommendations }: MapCanvasProps) {
         )}
       </AnimatePresence>
 
-      {isLoading && <MapSkeleton />}
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: isLoading ? 0 : 1 }}
-        transition={{ duration: 0.4 }}
-      >
-        <div
-          ref={containerRef}
-          className="h-64 sm:h-72 md:h-80 w-full bg-muted"
-          style={isLoading ? { position: "absolute", visibility: "hidden" } : undefined}
-        />
-      </motion.div>
+      <div className="relative h-64 sm:h-72 md:h-80 w-full bg-muted">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isLoading ? 0 : 1 }}
+          transition={{ duration: 0.4 }}
+          className="h-full w-full"
+        >
+          <div ref={containerRef} className="h-full w-full bg-muted" />
+        </motion.div>
+        {isLoading && (
+          <div className="absolute inset-0">
+            <MapSkeleton />
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }

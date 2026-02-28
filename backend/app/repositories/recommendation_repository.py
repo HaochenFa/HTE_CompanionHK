@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 
 from app.models.enums import RoleType, TravelMode
@@ -74,3 +76,23 @@ class RecommendationRepository:
         self._session.add_all(rows)
         self._session.flush()
         return rows
+
+    def list_requests_by_ids(
+        self,
+        *,
+        user_id: str,
+        role: RoleType,
+        request_ids: list[str],
+    ) -> list[RecommendationRequest]:
+        if not request_ids:
+            return []
+        stmt = (
+            select(RecommendationRequest)
+            .where(
+                RecommendationRequest.user_id == user_id,
+                RecommendationRequest.role == role,
+                RecommendationRequest.request_id.in_(request_ids),
+            )
+            .options(selectinload(RecommendationRequest.items))
+        )
+        return list(self._session.scalars(stmt))

@@ -8,6 +8,7 @@ export interface RecommendationRequest {
   query: string;
   latitude: number;
   longitude: number;
+  chat_request_id?: string;
   max_results?: number;
   preference_tags?: string[];
   travel_mode?: TravelMode;
@@ -41,4 +42,14 @@ export interface RecommendationResponse {
     degraded: boolean;
     fallback_reason: string | null;
   };
+}
+
+export interface RecommendationHistoryRequest {
+  user_id: string;
+  role: "local_guide";
+  request_ids: string[];
+}
+
+export interface RecommendationHistoryResponse {
+  results: RecommendationResponse[];
 }

@@ -124,3 +124,105 @@ def test_recommendations_endpoint_rejects_non_local_guide_role() -> None:
     response = client.post("/recommendations", json=payload)
 
     assert response.status_code == 422
+
+
+def test_recommendations_endpoint_uses_chat_request_id_when_provided(monkeypatch) -> None:
+    def fake_generate_recommendations(request: RecommendationRequest) -> RecommendationResponse:
+        assert request.chat_request_id == "chat-turn-123"
+        return RecommendationResponse(
+            request_id=request.chat_request_id or "fallback-request-id",
+            recommendations=[],
+            context=RecommendationContext(
+                weather_condition="unknown",
+                temperature_c=None,
+                degraded=False,
+                fallback_reason=None,
+            ),
+        )
+
+    monkeypatch.setattr(
+        recommendations_route.recommendation_service,
+        "generate_recommendations",
+        fake_generate_recommendations,
+    )
+    response = client.post(
+        "/recommendations",
+        json={
+            "user_id": "test-user",
+            "role": "local_guide",
+            "query": "cafe",
+            "latitude": 22.281,
+            "longitude": 114.158,
+            "chat_request_id": "chat-turn-123",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["request_id"] == "chat-turn-123"
+
+
+def test_recommendation_history_endpoint_returns_batch(monkeypatch) -> None:
+    def fake_get_history(*, user_id: str, role: str, request_ids: list[str]):
+        assert user_id == "test-user"
+        assert role == "local_guide"
+        assert request_ids == ["turn-1", "turn-2"]
+        return {
+            "results": [
+                {
+                    "request_id": "turn-1",
+                    "recommendations": [],
+                    "context": {
+                        "weather_condition": "cloudy",
+                        "temperature_c": 26.2,
+                        "degraded": False,
+                        "fallback_reason": None,
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr(recommendations_route.recommendation_service, "get_history", fake_get_history)
+    response = client.post(
+        "/recommendations/history",
+        json={
+            "user_id": "test-user",
+            "role": "local_guide",
+            "request_ids": ["turn-1", "turn-2"],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["results"]) == 1
+    assert body["results"][0]["request_id"] == "turn-1"
+
+
+def test_api_prefixed_recommendations_history_endpoint_returns_batch(monkeypatch) -> None:
+    def fake_get_history(*, user_id: str, role: str, request_ids: list[str]):
+        assert user_id == "test-user"
+        assert role == "local_guide"
+        assert request_ids == ["turn-1"]
+        return {
+            "results": [
+                {
+                    "request_id": "turn-1",
+                    "recommendations": [],
+                    "context": {
+                        "weather_condition": "cloudy",
+                        "temperature_c": 25.0,
+                        "degraded": False,
+                        "fallback_reason": None,
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr(recommendations_route.recommendation_service, "get_history", fake_get_history)
+    response = client.post(
+        "/api/recommendations/history",
+        json={
+            "user_id": "test-user",
+            "role": "local_guide",
+            "request_ids": ["turn-1"],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["results"][0]["request_id"] == "turn-1"

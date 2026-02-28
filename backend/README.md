@@ -5,7 +5,17 @@ FastAPI orchestration service for CompanionHK.
 Current framework notes:
 
 - `/chat` is role-aware and thread-aware (`role` + `thread_id`) for stateful session continuity.
+- Role-scoped chat aliases are available for frontend routing stability:
+  - `POST /chat/companion`
+  - `POST /chat/guide`
+  - `POST /chat/study`
+- Chat history retrieval is available for refresh-resilient UX:
+  - `GET /chat/history`
+  - `GET /chat/companion/history`
+  - `GET /chat/guide/history`
+  - `GET /chat/study/history`
 - `/chat` now runs a smaller safety monitor flow (MiniMax + rules fallback) and returns enriched `safety` metadata.
+- Recommendations support turn-binding with optional `chat_request_id` and history restore via `POST /recommendations/history`.
 - `/safety/evaluate` provides standalone risk/emotion scoring with the same monitor logic used by `/chat`.
 - `/voice/tts` and `/voice/stt` expose voice provider orchestration with fallback.
 - `/health/dependencies` and `/ready` provide dependency readiness checks for deployment probes.

@@ -4,16 +4,15 @@ import { use } from "react";
 import { redirect } from "next/navigation";
 import { ChatShell } from "@/features/chat/chat-shell";
 import { useAuth } from "@/lib/auth-context";
-import type { Role } from "@/features/chat/types";
-
-const VALID_ROLES: Role[] = ["companion", "local_guide", "study_guide"];
+import { slugToRole } from "@/features/chat/role-routing";
 
 export default function ChatPage({ params }: { params: Promise<{ role: string }> }) {
   const { role } = use(params);
   const { user, isLoading } = useAuth();
+  const initialRole = slugToRole(role);
 
   if (!isLoading && !user) redirect("/login");
-  if (!VALID_ROLES.includes(role as Role)) redirect("/");
+  if (!initialRole) redirect("/");
 
   if (isLoading) {
     return (
@@ -25,7 +24,7 @@ export default function ChatPage({ params }: { params: Promise<{ role: string }>
 
   return (
     <div className="min-h-dvh flex flex-col bg-background">
-      <ChatShell initialRole={role as Role} userId={user!.username} />
+      <ChatShell initialRole={initialRole} userId={user!.username} />
     </div>
   );
 }
