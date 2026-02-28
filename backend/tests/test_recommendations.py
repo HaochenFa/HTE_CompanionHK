@@ -111,3 +111,16 @@ def test_recommendations_endpoint_validates_max_results_range() -> None:
     response = client.post("/recommendations", json=payload)
 
     assert response.status_code == 422
+
+
+def test_recommendations_endpoint_rejects_non_local_guide_role() -> None:
+    payload = {
+        "user_id": "test-user",
+        "role": "companion",
+        "query": "food",
+        "latitude": 22.281,
+        "longitude": 114.158,
+    }
+    response = client.post("/recommendations", json=payload)
+
+    assert response.status_code == 422

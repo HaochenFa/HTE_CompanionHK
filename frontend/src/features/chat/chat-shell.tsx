@@ -17,7 +17,7 @@ import { useWeather } from "@/components/weather-provider";
 import { MapCanvas } from "@/features/recommendations/map-canvas";
 import { RecommendationList } from "@/features/recommendations/recommendation-list";
 import type { RecommendationResponse } from "@/features/recommendations/types";
-import type { Role } from "@/features/chat/types";
+import type { ChatResponse, Role } from "@/features/chat/types";
 import { postChatMessage } from "@/lib/api/chat";
 import { postRecommendations } from "@/lib/api/recommendations";
 import {
@@ -111,6 +111,14 @@ function buildInitialThreadMap(userId: string): Record<Role, string> {
 
 function buildInitialMessageMap(): Record<Role, ChatMessage[]> {
   return { companion: [], local_guide: [], study_guide: [] };
+}
+
+function buildInitialBannerMap(): Record<Role, boolean> {
+  return { companion: false, local_guide: false, study_guide: false };
+}
+
+function buildInitialSafetyMap(): Record<Role, ChatResponse["safety"] | null> {
+  return { companion: null, local_guide: null, study_guide: null };
 }
 
 function formatTime(ts: number): string {
@@ -329,7 +337,10 @@ export function ChatShell() {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showCrisisBanner, setShowCrisisBanner] = useState(false);
+  const [showCrisisBannerByRole, setShowCrisisBannerByRole] =
+    useState<Record<Role, boolean>>(buildInitialBannerMap());
+  const [safetyByRole, setSafetyByRole] =
+    useState<Record<Role, ChatResponse["safety"] | null>>(buildInitialSafetyMap());
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [recommendationResponse, setRecommendationResponse] =
     useState<RecommendationResponse | null>(null);
@@ -342,6 +353,7 @@ export function ChatShell() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const activeMessages = messagesByRole[activeRole];
+  const activeSafety = safetyByRole[activeRole];
   const activeRecommendations = recommendationResponse?.recommendations ?? [];
   const recommendationCenter =
     activeRecommendations[0]?.location ?? coordinates ?? HONG_KONG_FALLBACK;
@@ -431,7 +443,10 @@ export function ChatShell() {
         timestamp: Date.now(),
       };
       setMessagesByRole((prev) => ({ ...prev, [roleAtSend]: [...prev[roleAtSend], assistantMsg] }));
-      if (res.safety.show_crisis_banner) setShowCrisisBanner(true);
+      setSafetyByRole((prev) => ({ ...prev, [roleAtSend]: res.safety }));
+      if (res.safety.show_crisis_banner) {
+        setShowCrisisBannerByRole((prev) => ({ ...prev, [roleAtSend]: true }));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to send message.");
     } finally {
@@ -534,23 +549,29 @@ export function ChatShell() {
             {meta.description}
           </motion.p>
         </AnimatePresence>
+        {activeSafety && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Safety: {activeSafety.risk_level}
+            {activeSafety.emotion_label ? ` · Emotion: ${activeSafety.emotion_label}` : ""}
+          </p>
+        )}
       </div>
 
       {/* ─── Safety Banner ─── */}
-      <AnimatePresence>
-        {showCrisisBanner && (
-          <motion.div
-            key="crisis-banner"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={springGentle}
-            className="px-4 pb-2 md:px-6 overflow-hidden"
-          >
-            <SafetyBanner onDismiss={() => setShowCrisisBanner(false)} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {showCrisisBannerByRole[activeRole] && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          transition={springGentle}
+          className="px-4 pb-2 md:px-6 overflow-hidden"
+        >
+          <SafetyBanner
+            onDismiss={() =>
+              setShowCrisisBannerByRole((prev) => ({ ...prev, [activeRole]: false }))
+            }
+          />
+        </motion.div>
+      )}
 
       {/* ─── Chat Messages ─── */}
       <div className="relative mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 md:px-6">

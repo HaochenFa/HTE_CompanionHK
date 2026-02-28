@@ -2,9 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.schemas.chat import ChatRole
-
 TravelMode = Literal["walking", "transit", "driving"]
+RecommendationRole = Literal["local_guide"]
 
 
 class Coordinates(BaseModel):
@@ -14,7 +13,7 @@ class Coordinates(BaseModel):
 
 class RecommendationRequest(BaseModel):
     user_id: str = Field(min_length=1)
-    role: ChatRole = "local_guide"
+    role: RecommendationRole = "local_guide"
     query: str = Field(min_length=1)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
