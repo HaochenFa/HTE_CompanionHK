@@ -1,20 +1,17 @@
-import boto3
-import logging
-from botocore.exceptions import ClientError, BotoCoreError
+from __future__ import annotations
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,  # Change to DEBUG for more detail
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),  # Console output
-        logging.FileHandler("aws_adapter.log", mode="a")  # Log file
-    ]
-)
+from typing import Any, Mapping
 
-logger = logging.getLogger("AWSAdapter")
 
 class AWSAdapter:
+    """
+    Deployment preparation adapter for AWS targets.
+
+    This adapter intentionally returns declarative plans/checklists instead
+    of creating cloud resources directly. Runtime side effects should be done
+    by dedicated IaC or deployment pipelines.
+    """
+
     provider_name = "aws"
 
     def describe_targets(self) -> dict[str, str]:
@@ -23,144 +20,131 @@ class AWSAdapter:
             "backend": "AWS ECS Fargate (FastAPI service)",
             "database": "Amazon RDS PostgreSQL",
             "cache": "Amazon ElastiCache Redis",
-            "vector_store": "Amazon Aurora PostgreSQL with pgvector",
-            "orchestration": "AWS Step Functions (LangGraph runtime boundary)",
-            "storage": "Amazon S3 (profile memory, assets)",
+            "vector_store": "PostgreSQL pgvector extension (RDS/Aurora)",
+            "storage": "Amazon S3",
             "secrets": "AWS Secrets Manager",
-            "cicd": "AWS CodePipeline / GitHub Actions"
+            "observability": "Amazon CloudWatch",
+            "cicd": "AWS CodePipeline / GitHub Actions",
         }
 
-    # --- Frontend ---
-    def deploy_frontend(self, app_name: str, repo_url: str, branch: str = "main"):
-        client = boto3.client("amplify")
-        try:
-            response = client.create_app(
-                Name=app_name,
-                Repository=repo_url,
-                IamServiceRoleArn="arn:aws:iam::<account-id>:role/AmplifyServiceRole"
-            )
-            logger.info("Amplify app created: %s", response["App"]["AppId"])
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error creating Amplify app: %s", e)
+    def required_env_vars(self) -> dict[str, tuple[str, ...]]:
+        return {
+            "global": (
+                "AWS_REGION",
+                "AWS_ACCOUNT_ID",
+            ),
+            "frontend": (
+                "AMPLIFY_APP_NAME",
+                "AMPLIFY_REPOSITORY_URL",
+                "AMPLIFY_BRANCH",
+            ),
+            "backend": (
+                "ECS_CLUSTER_NAME",
+                "ECS_SERVICE_NAME",
+                "ECS_TASK_FAMILY",
+                "ECS_CONTAINER_PORT",
+                "VPC_SUBNET_IDS",
+                "VPC_SECURITY_GROUP_IDS",
+            ),
+            "database": (
+                "RDS_INSTANCE_IDENTIFIER",
+                "RDS_DB_NAME",
+                "RDS_MASTER_USERNAME",
+                "RDS_MASTER_PASSWORD_SECRET_ARN",
+            ),
+            "cache": (
+                "ELASTICACHE_CLUSTER_ID",
+            ),
+            "storage": (
+                "S3_ASSET_BUCKET",
+            ),
+            "secrets": (
+                "SECRETS_MANAGER_PREFIX",
+            ),
+        }
 
-    # --- Backend ---
-    def deploy_backend(self, cluster_name: str, service_name: str, task_definition: str):
-        ecs = boto3.client("ecs")
-        try:
-            response = ecs.create_service(
-                cluster=cluster_name,
-                serviceName=service_name,
-                taskDefinition=task_definition,
-                desiredCount=1,
-                launchType="FARGATE",
-                networkConfiguration={
-                    "awsvpcConfiguration": {
-                        "subnets": ["subnet-xxxxxx"],
-                        "assignPublicIp": "ENABLED"
-                    }
-                }
-            )
-            logger.info("ECS service created: %s", response["service"]["serviceArn"])
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error creating ECS service: %s", e)
+    def deployment_order(self) -> list[str]:
+        return [
+            "networking",
+            "database",
+            "cache",
+            "storage",
+            "secrets",
+            "backend",
+            "frontend",
+            "observability",
+        ]
 
-    # --- Database ---
-    def setup_database(self, db_identifier: str, username: str, password: str):
-        rds = boto3.client("rds")
-        try:
-            response = rds.create_db_instance(
-                DBInstanceIdentifier=db_identifier,
-                AllocatedStorage=20,
-                DBInstanceClass="db.t3.micro",
-                Engine="postgres",
-                MasterUsername=username,
-                MasterUserPassword=password,
-                PubliclyAccessible=True
-            )
-            logger.info("RDS instance creation started: %s", response["DBInstance"]["DBInstanceIdentifier"])
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error creating RDS instance: %s", e)
+    def validate_preflight(self, env: Mapping[str, str]) -> dict[str, list[str]]:
+        required = self.required_env_vars()
+        missing: list[str] = []
+        present: list[str] = []
+        warnings: list[str] = []
 
-    # --- Cache ---
-    def setup_cache(self, cluster_name: str):
-        elasticache = boto3.client("elasticache")
-        try:
-            response = elasticache.create_cache_cluster(
-                CacheClusterId=cluster_name,
-                Engine="redis",
-                CacheNodeType="cache.t3.micro",
-                NumCacheNodes=1
-            )
-            logger.info("ElastiCache cluster creation started: %s", response["CacheClusterId"])
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error creating ElastiCache cluster: %s", e)
+        for group, names in required.items():
+            for name in names:
+                value = env.get(name, "").strip()
+                if value:
+                    present.append(name)
+                else:
+                    missing.append(name)
 
-    # --- Vector Store ---
-    def setup_vector_store(self, cluster_id: str):
-        rds = boto3.client("rds")
-        try:
-            response = rds.modify_db_cluster(
-                DBClusterIdentifier=cluster_id,
-                ApplyImmediately=True
-            )
-            logger.info("Aurora cluster modified: %s", response["DBCluster"]["DBClusterIdentifier"])
-            logger.warning("Reminder: Enable pgvector manually via SQL: CREATE EXTENSION pgvector;")
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error modifying Aurora cluster: %s", e)
+            if group == "backend" and not env.get("ECS_EXECUTION_ROLE_ARN", "").strip():
+                warnings.append("ECS_EXECUTION_ROLE_ARN is recommended for Fargate task pulls/logging.")
+            if group == "database" and not env.get("RDS_MULTI_AZ", "").strip():
+                warnings.append("RDS_MULTI_AZ is not set; single AZ may reduce resilience for demo-day incidents.")
 
-    # --- Orchestration ---
-    def setup_orchestration(self, workflow_name: str, definition: str, role_arn: str):
-        sf = boto3.client("stepfunctions")
-        try:
-            response = sf.create_state_machine(
-                name=workflow_name,
-                definition=definition,
-                roleArn=role_arn
-            )
-            logger.info("Step Functions workflow created: %s", response["stateMachineArn"])
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error creating Step Functions workflow: %s", e)
+        return {
+            "missing": sorted(missing),
+            "present": sorted(present),
+            "warnings": warnings,
+        }
 
-    # --- Storage ---
-    def setup_storage(self, bucket_name: str):
-        s3 = boto3.client("s3")
-        try:
-            s3.create_bucket(Bucket=bucket_name)
-            logger.info("S3 bucket created: %s", bucket_name)
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error creating S3 bucket: %s", e)
+    def build_deployment_plan(self, *, env: Mapping[str, str]) -> dict[str, Any]:
+        """
+        Build a deterministic plan describing intended AWS resources.
 
-    # --- Secrets ---
-    def setup_secrets(self, secret_name: str, value: str):
-        sm = boto3.client("secretsmanager")
-        try:
-            response = sm.create_secret(
-                Name=secret_name,
-                SecretString=value
-            )
-            logger.info("Secret stored: %s", response["ARN"])
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error storing secret: %s", e)
-
-    # --- CI/CD ---
-    def setup_cicd(self, pipeline_name: str, role_arn: str, artifact_bucket: str):
-        cp = boto3.client("codepipeline")
-        try:
-            response = cp.create_pipeline(
-                pipeline={
-                    "name": pipeline_name,
-                    "roleArn": role_arn,
-                    "artifactStore": {
-                        "type": "S3",
-                        "location": artifact_bucket
-                    },
-                    "stages": [
-                        {"name": "Source", "actions": []},
-                        {"name": "Build", "actions": []},
-                        {"name": "Deploy", "actions": []}
-                    ]
-                }
-            )
-            logger.info("Pipeline created: %s", pipeline_name)
-        except (ClientError, BotoCoreError) as e:
-            logger.error("Error creating pipeline: %s", e)
+        The returned object is safe to log and to use as handoff input for
+        Terraform/CDK/manual runbooks.
+        """
+        return {
+            "provider": self.provider_name,
+            "targets": self.describe_targets(),
+            "order": self.deployment_order(),
+            "preflight": self.validate_preflight(env),
+            "resources": {
+                "frontend": {
+                    "service": "amplify",
+                    "app_name": env.get("AMPLIFY_APP_NAME", ""),
+                    "repository": env.get("AMPLIFY_REPOSITORY_URL", ""),
+                    "branch": env.get("AMPLIFY_BRANCH", "main"),
+                },
+                "backend": {
+                    "service": "ecs_fargate",
+                    "cluster_name": env.get("ECS_CLUSTER_NAME", ""),
+                    "service_name": env.get("ECS_SERVICE_NAME", ""),
+                    "task_family": env.get("ECS_TASK_FAMILY", ""),
+                    "container_port": env.get("ECS_CONTAINER_PORT", "8000"),
+                },
+                "database": {
+                    "service": "rds_postgres",
+                    "identifier": env.get("RDS_INSTANCE_IDENTIFIER", ""),
+                    "db_name": env.get("RDS_DB_NAME", "companionhk"),
+                    "master_username": env.get("RDS_MASTER_USERNAME", ""),
+                    "password_secret_arn": env.get("RDS_MASTER_PASSWORD_SECRET_ARN", ""),
+                    "extensions": ["pgvector"],
+                },
+                "cache": {
+                    "service": "elasticache_redis",
+                    "cluster_id": env.get("ELASTICACHE_CLUSTER_ID", ""),
+                },
+                "storage": {
+                    "service": "s3",
+                    "bucket": env.get("S3_ASSET_BUCKET", ""),
+                },
+                "secrets": {
+                    "service": "secrets_manager",
+                    "prefix": env.get("SECRETS_MANAGER_PREFIX", "companionhk/"),
+                },
+            },
+        }
