@@ -1,5 +1,7 @@
 # CompanionHK (`港伴AI`)
 
+![Welcome Page](assets/welcome_page.jpeg)
+
 CompanionHK is an AI companion app for Hong Kong users with three role spaces: `Companion`, `Local Guide`, and `Study Guide`, focused on safety and practical daily support.
 
 ## Tech Stack
